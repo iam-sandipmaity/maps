@@ -79,6 +79,10 @@ import app.organicmaps.routing.NavigationController;
 import app.organicmaps.routing.NavigationService;
 import app.organicmaps.routing.RoutingBottomMenuListener;
 import app.organicmaps.routing.RoutingErrorDialogFragment;
+import app.organicmaps.telecom.ui.TelecomSearchActivity;
+import app.organicmaps.telecom.ui.TelecomVisitPlannerActivity;
+import app.organicmaps.telecom.ui.TelecomDataManagementActivity;
+
 import app.organicmaps.routing.RoutingPlanFragment;
 import app.organicmaps.routing.RoutingPlanInplaceController;
 import app.organicmaps.sdk.ChoosePositionMode;
@@ -2526,8 +2530,18 @@ public class MwmActivity extends BaseMwmFragmentActivity
         items.add(new MenuBottomSheetItem(R.string.placepage_add_place_button, R.drawable.ic_plus,
                                           this::onAddPlaceOptionSelected));
 
+      items.add(new MenuBottomSheetItem(R.string.telecom_search_menu, R.drawable.ic_search,
+                                        () -> TelecomSearchActivity.start(this, null)));
+
+      items.add(new MenuBottomSheetItem(R.string.telecom_visit_planner_menu, R.drawable.ic_route_to,
+                                        () -> TelecomVisitPlannerActivity.start(this)));
+
+      items.add(new MenuBottomSheetItem(R.string.telecom_data_management_menu, R.drawable.ic_download,
+                                        () -> TelecomDataManagementActivity.start(this)));
+
       items.add(new MenuBottomSheetItem(R.string.download_maps, R.drawable.ic_download, getDownloadMapsCounter(),
                                         this::onDownloadMapsOptionSelected));
+
 
       mDonatesUrl = Utils.getDonateUrl(getApplicationContext());
       if (!mDonatesUrl.isEmpty())

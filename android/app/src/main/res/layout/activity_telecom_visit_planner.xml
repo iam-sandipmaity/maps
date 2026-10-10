@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+  <com.google.android.material.appbar.AppBarLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Multi-Site Visit Planner"
+        app:navigationIcon="?attr/homeAsUpIndicator" />
+
+  </com.google.android.material.appbar.AppBarLayout>
+
+  <!-- Summary Card -->
+  <com.google.android.material.card.MaterialCardView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_margin="8dp"
+      app:cardCornerRadius="8dp"
+      app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+      <LinearLayout
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tv_stops_count"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stops: 0"
+            android:textAppearance="?attr/textAppearanceSubtitle1"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_total_distance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Est. Distance: 0.0 km"
+            android:textAppearance="?attr/textAppearanceSubtitle1"
+            android:textStyle="bold"
+            android:textColor="?attr/colorAccent" />
+
+      </LinearLayout>
+
+      <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="2dp"
+          android:text="*Distance shown is approximate great-circle travel; road distances vary by network."
+          android:textAppearance="?attr/textAppearanceCaption"
+          android:textColor="?android:attr/textColorSecondary" />
+
+      <TextView
+          android:id="@+id/tv_start_location"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="4dp"
+          android:text="Starting From: First Selected Site"
+          android:textAppearance="?attr/textAppearanceCaption"
+          android:textStyle="italic" />
+
+      <!-- Action Buttons -->
+      <LinearLayout
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="8dp"
+          android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_optimize"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="Optimize Route" />
+
+        <Button
+            android:id="@+id/btn_navigate_next"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="Navigate Next" />
+
+      </LinearLayout>
+
+    </LinearLayout>
+
+  </com.google.android.material.card.MaterialCardView>
+
+  <!-- Stops List -->
+  <androidx.recyclerview.widget.RecyclerView
+      android:id="@+id/rv_stops"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:clipToPadding="false"
+      android:paddingBottom="8dp" />
+
+  <!-- Empty State -->
+  <TextView
+      android:id="@+id/tv_empty_plan"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:gravity="center"
+      android:padding="24dp"
+      android:text="No sites added to today's visit plan yet.\n\nUse Telecom Search or Map Markers to add sites to your itinerary."
+      android:textAppearance="?attr/textAppearanceBody1"
+      android:textColor="?android:attr/textColorSecondary"
+      android:visibility="gone" />
+
+  <!-- Bottom Clear Bar -->
+  <Button
+      android:id="@+id/btn_clear_plan"
+      style="@style/Widget.MaterialComponents.Button.TextButton"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:text="Clear Visit Plan"
+      android:textColor="@android:color/holo_red_dark" />
+
+</LinearLayout>

@@ -3,6 +3,12 @@
     <!-- Project only name, app_name is added to strings in build.gradle & can contain "Debug" etc. prefixes. -->
     <string name="project_name" translatable="false">CoMaps</string>
     <string name="app_site_url">https://comaps.app/</string>
+    <!-- Telecom Site System -->
+    <string name="telecom_search_menu">Telecom Site Search</string>
+    <string name="telecom_visit_planner_menu">Visit Planner</string>
+    <string name="telecom_data_management_menu">Telecom Data Management</string>
+    <string name="telecom_layer_toggle">Telecom Site Layer</string>
+
     <!-- SECTION: Strings -->
     <!-- Button text (should be short) -->
     <string name="back">Back</string>

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginVertical="4dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="?attr/dividerHorizontal">
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:gravity="center_vertical"
+      android:padding="12dp">
+
+    <!-- Stop Number Circle -->
+    <TextView
+        android:id="@+id/tv_stop_number"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:gravity="center"
+        android:text="1"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"
+        android:background="@drawable/bg_search_radius"
+        android:backgroundTint="?attr/colorAccent" />
+
+    <!-- Site Details -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+      <TextView
+          android:id="@+id/tv_site_id"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="I-WB-KGPU-ENB-9036"
+          android:textAppearance="?attr/textAppearanceSubtitle2"
+          android:textStyle="bold" />
+
+      <TextView
+          android:id="@+id/tv_site_name"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="MOHAMMADPUR | Kharagpur"
+          android:textAppearance="?attr/textAppearanceCaption" />
+
+      <TextView
+          android:id="@+id/tv_coordinates"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="2dp"
+          android:text="22.072423, 87.341914"
+          android:textAppearance="?attr/textAppearanceCaption"
+          android:textColor="?android:attr/textColorSecondary" />
+
+    </LinearLayout>
+
+    <!-- Action Buttons -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+      <ImageView
+          android:id="@+id/btn_move_up"
+          android:layout_width="36dp"
+          android:layout_height="36dp"
+          android:padding="8dp"
+          android:src="@android:drawable/arrow_up_float"
+          android:background="?attr/selectableItemBackgroundBorderless"
+          android:contentDescription="Move Up" />
+
+      <ImageView
+          android:id="@+id/btn_move_down"
+          android:layout_width="36dp"
+          android:layout_height="36dp"
+          android:padding="8dp"
+          android:src="@android:drawable/arrow_down_float"
+          android:background="?attr/selectableItemBackgroundBorderless"
+          android:contentDescription="Move Down" />
+
+      <ImageView
+          android:id="@+id/btn_nav"
+          android:layout_width="36dp"
+          android:layout_height="36dp"
+          android:padding="8dp"
+          android:src="@android:drawable/ic_menu_directions"
+          android:background="?attr/selectableItemBackgroundBorderless"
+          android:contentDescription="Navigate" />
+
+      <ImageView
+          android:id="@+id/btn_remove"
+          android:layout_width="36dp"
+          android:layout_height="36dp"
+          android:padding="8dp"
+          android:src="@android:drawable/ic_menu_delete"
+          android:background="?attr/selectableItemBackgroundBorderless"
+          android:contentDescription="Remove" />
+
+    </LinearLayout>
+
+  </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

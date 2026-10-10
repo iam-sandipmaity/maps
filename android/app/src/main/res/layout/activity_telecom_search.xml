@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+  <com.google.android.material.appbar.AppBarLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Telecom Site Search"
+        app:navigationIcon="?attr/homeAsUpIndicator" />
+
+  </com.google.android.material.appbar.AppBarLayout>
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:padding="8dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:hint="Search Site ID, name, location, technician..."
+        app:endIconMode="clear_text">
+
+      <com.google.android.material.textfield.TextInputEditText
+          android:id="@+id/et_search"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:inputType="text"
+          android:imeOptions="actionSearch" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+  </LinearLayout>
+
+  <TextView
+      android:id="@+id/tv_result_count"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:paddingHorizontal="12dp"
+      android:paddingBottom="4dp"
+      android:textAppearance="?attr/textAppearanceCaption"
+      android:text="Showing results"
+      android:visibility="gone" />
+
+  <androidx.recyclerview.widget.RecyclerView
+      android:id="@+id/rv_results"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:clipToPadding="false"
+      android:paddingBottom="8dp" />
+
+  <TextView
+      android:id="@+id/tv_empty"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:gravity="center"
+      android:text="No matching telecom sites found.\nTry searching Site ID (e.g. 9036, KGPU), location, or technician."
+      android:textAppearance="?attr/textAppearanceBody1"
+      android:textColor="?android:attr/textColorSecondary"
+      android:visibility="gone" />
+
+</LinearLayout>

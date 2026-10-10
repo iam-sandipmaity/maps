@@ -1,0 +1,477 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+  <com.google.android.material.appbar.AppBarLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="Telecom Site Details"
+        app:navigationIcon="?attr/homeAsUpIndicator" />
+
+  </com.google.android.material.appbar.AppBarLayout>
+
+  <androidx.core.widget.NestedScrollView
+      android:layout_width="match_parent"
+      android:layout_height="match_parent"
+      app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+      <!-- Header Card -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:id="@+id/tv_detail_site_id"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="I-WB-KGPU-ENB-9036"
+              android:textAppearance="?attr/textAppearanceHeadline6"
+              android:textStyle="bold"
+              android:textColor="?attr/colorAccent" />
+
+          <TextView
+              android:id="@+id/tv_detail_site_name"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:text="MOHAMMADPUR"
+              android:textAppearance="?attr/textAppearanceSubtitle1" />
+
+          <TextView
+              android:id="@+id/tv_detail_type_loc"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="2dp"
+              android:text="Type: ENB | JC: KHARAGPUR"
+              android:textAppearance="?attr/textAppearanceBody2"
+              android:textColor="?android:attr/textColorSecondary" />
+
+          <TextView
+              android:id="@+id/tv_detail_address"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:text="Address: Mohammadpur, Midnapore"
+              android:textAppearance="?attr/textAppearanceCaption" />
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+      <!-- Coordinates & Copy Actions Card -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Coordinates"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <TextView
+              android:id="@+id/tv_detail_coords"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:text="22.072423, 87.341914"
+              android:textAppearance="?attr/textAppearanceBody1"
+              android:textStyle="bold" />
+
+          <!-- Copy Buttons -->
+          <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="8dp"
+              android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_copy_coords"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Copy Lat,Lon" />
+
+            <Button
+                android:id="@+id/btn_copy_site_id"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="Copy Site ID" />
+
+          </LinearLayout>
+
+          <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_copy_lat"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Copy Lat" />
+
+            <Button
+                android:id="@+id/btn_copy_lon"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Copy Lon" />
+
+            <Button
+                android:id="@+id/btn_copy_gmaps"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Copy Link" />
+
+          </LinearLayout>
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+      <!-- External Navigation & Map Actions Card -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Navigation &amp; Map Actions"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <Button
+              android:id="@+id/btn_open_google_maps"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="8dp"
+              android:text="Navigate in Google Maps" />
+
+          <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_open_comaps"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="View in CoMaps" />
+
+            <Button
+                android:id="@+id/btn_open_mappls"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="Open in Mappls" />
+
+          </LinearLayout>
+
+          <Button
+              android:id="@+id/btn_toggle_visit_plan"
+              style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:text="Add to Visit Plan" />
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+      <!-- Personnel & Contacts Card -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Personnel &amp; Field Contacts"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <!-- Technician Row -->
+          <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="8dp"
+              android:gravity="center_vertical"
+              android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+              <TextView
+                  android:id="@+id/tv_detail_tech_name"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="Technician: AMALESH MONDAL"
+                  android:textAppearance="?attr/textAppearanceBody2"
+                  android:textStyle="bold" />
+
+              <TextView
+                  android:id="@+id/tv_detail_tech_phone"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="Mobile: 6289037005"
+                  android:textAppearance="?attr/textAppearanceCaption" />
+
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/btn_call_tech"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="8dp"
+                android:src="@android:drawable/ic_menu_call"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Call Technician" />
+
+            <ImageView
+                android:id="@+id/btn_copy_tech_phone"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="8dp"
+                android:src="@android:drawable/ic_menu_save"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Copy Technician Mobile" />
+
+          </LinearLayout>
+
+          <View
+              android:layout_width="match_parent"
+              android:layout_height="1dp"
+              android:layout_marginVertical="8dp"
+              android:background="?attr/dividerHorizontal" />
+
+          <!-- Supervisor Row -->
+          <LinearLayout
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:gravity="center_vertical"
+              android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+              <TextView
+                  android:id="@+id/tv_detail_sp_name"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="Supervisor: AMIT KAR"
+                  android:textAppearance="?attr/textAppearanceBody2"
+                  android:textStyle="bold" />
+
+              <TextView
+                  android:id="@+id/tv_detail_sp_phone"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="Mobile: 7439511827"
+                  android:textAppearance="?attr/textAppearanceCaption" />
+
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/btn_call_sp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="8dp"
+                android:src="@android:drawable/ic_menu_call"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Call Supervisor" />
+
+            <ImageView
+                android:id="@+id/btn_copy_sp_phone"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="8dp"
+                android:src="@android:drawable/ic_menu_save"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Copy Supervisor Mobile" />
+
+          </LinearLayout>
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+      <!-- Electricity Board & Power Card -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Power &amp; Electricity Board (EB)"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <TextView
+              android:id="@+id/tv_detail_eb"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:lineSpacingExtra="4dp"
+              android:textAppearance="?attr/textAppearanceBody2" />
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+      <!-- Infrastructure Equipment Card (SMPS, BM, RM, DG, Solar) -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Infrastructure Equipment"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <TextView
+              android:id="@+id/tv_detail_equipment"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:lineSpacingExtra="4dp"
+              android:textAppearance="?attr/textAppearanceBody2" />
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+      <!-- Remarks & Notes Card -->
+      <com.google.android.material.card.MaterialCardView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          app:cardCornerRadius="8dp"
+          app:cardElevation="2dp"
+          android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Remarks &amp; Technical Notes"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <TextView
+              android:id="@+id/tv_detail_notes"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="4dp"
+              android:textAppearance="?attr/textAppearanceBody2" />
+
+        </LinearLayout>
+
+      </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+
+  </androidx.core.widget.NestedScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

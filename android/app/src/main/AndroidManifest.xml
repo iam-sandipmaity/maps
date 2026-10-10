@@ -477,6 +477,32 @@
     <activity
         android:name="app.organicmaps.MapPlaceholderActivity"/>
     <activity
+        android:name="app.organicmaps.telecom.ui.TelecomSearchActivity"
+        android:theme="@style/MwmTheme.WindowBg"
+        android:configChanges="orientation|screenLayout|screenSize"
+        android:screenOrientation="fullUser"
+        android:parentActivityName="app.organicmaps.MwmActivity"
+        android:windowSoftInputMode="adjustResize" />
+    <activity
+        android:name="app.organicmaps.telecom.ui.TelecomSiteDetailsActivity"
+        android:theme="@style/MwmTheme.WindowBg"
+        android:configChanges="orientation|screenLayout|screenSize"
+        android:screenOrientation="fullUser"
+        android:parentActivityName="app.organicmaps.telecom.ui.TelecomSearchActivity" />
+    <activity
+        android:name="app.organicmaps.telecom.ui.TelecomVisitPlannerActivity"
+        android:theme="@style/MwmTheme.WindowBg"
+        android:configChanges="orientation|screenLayout|screenSize"
+        android:screenOrientation="fullUser"
+        android:parentActivityName="app.organicmaps.MwmActivity" />
+    <activity
+        android:name="app.organicmaps.telecom.ui.TelecomDataManagementActivity"
+        android:theme="@style/MwmTheme.WindowBg"
+        android:configChanges="orientation|screenLayout|screenSize"
+        android:screenOrientation="fullUser"
+        android:parentActivityName="app.organicmaps.MwmActivity" />
+
+    <activity
         android:name="app.organicmaps.car.screens.permissions.RequestPermissionsActivity"/>
     <service
         android:name="app.organicmaps.car.CarAppService"
