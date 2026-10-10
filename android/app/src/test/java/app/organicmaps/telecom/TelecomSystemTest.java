@@ -270,7 +270,7 @@ public class TelecomSystemTest {
     assertEquals("NANDAPUR", site.getSiteName());
     assertEquals(22.089841, site.getLatitude(), 0.00001);
     assertEquals(87.889908, site.getLongitude(), 0.00001);
-    assertTrue(site.hasValidCoordinates());
+    assertTrue(site.hasValidCoords());
     assertEquals("AMALESH MONDAL", site.getTechnicianName());
     assertEquals("6289037005", site.getTechnicianPhone());
   }

@@ -336,6 +336,10 @@ public class TelecomSite implements Serializable, Parcelable {
     return hasValidCoords;
   }
 
+  public boolean hasValidCoordinates() {
+    return hasValidCoords;
+  }
+
   public void setHasValidCoords(boolean hasValidCoords) {
     this.hasValidCoords = hasValidCoords;
   }
