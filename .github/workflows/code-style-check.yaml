@@ -2,7 +2,7 @@ name: Code style check
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ main, master ]
     paths:  # Should stay in sync with tools/unix/clang-format.sh
       - '.github/workflows/code-style-check.yaml'
       - 'android/app/src/**.java'

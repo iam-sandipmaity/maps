@@ -161,7 +161,15 @@
               android:layout_width="match_parent"
               android:layout_height="wrap_content"
               android:layout_marginTop="12dp"
-              android:text="Select CSV File to Import" />
+              android:text="Select CSV or Excel (.xlsx) File" />
+
+          <Button
+              android:id="@+id/btn_load_demo_data"
+              style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="8dp"
+              android:text="Load Demo Dataset (Infra Tracker)" />
 
         </LinearLayout>
 

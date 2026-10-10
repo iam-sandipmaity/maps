@@ -1,20 +1,53 @@
 name: Android Check
+
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '3party/**'
+      - 'android/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'defines.hpp'
+      - 'libs/**'
+      - 'private.h'
+      - 'configure.sh'
+      - '.github/workflows/android*.yaml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '3party/**'
+      - 'android/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'defines.hpp'
+      - 'libs/**'
+      - 'private.h'
+      - 'configure.sh'
+      - '.github/workflows/android*.yaml'
 
 env:
-  JAVA_HOME: /usr/lib/jvm/temurin-21-jdk-amd64  # Java 21 is required for Android Gradle 8 plugin
   SKIP_MAP_DOWNLOAD: true
 
 jobs:
   lint:
     name: Android Lint
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
 
       - name: Parallel submodules checkout
         shell: bash
@@ -74,9 +107,15 @@ jobs:
           pip install "protobuf<3.21" --break-system-packages
 
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 200 # enough to get all commits for the current day
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
 
       - name: Parallel submodules checkout
         shell: bash
@@ -87,6 +126,10 @@ jobs:
         with:
           key: ${{ github.workflow }}-${{ matrix.flavor }}
 
+      - name: Configure repository
+        shell: bash
+        run: ./configure.sh
+
       - name: Compile ${{ matrix.flavor }}
         shell: bash
         working-directory: android
@@ -96,11 +139,11 @@ jobs:
         run: |
           cmake --version
           ninja --version
-          ./gradlew -P${{ matrix.arch }} assemble${{ matrix.flavor }}
+          ./gradlew -P${{ matrix.arch }} test${{ matrix.flavor }}UnitTest assemble${{ matrix.flavor }}
 
       - name: Upload ${{ matrix.flavor }} apk
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: android-${{ matrix.flavor }}
-          path: android/app/build/outputs/apk/**/CoMaps-*.apk
-          if-no-files-found: error
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: warn

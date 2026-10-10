@@ -24,6 +24,7 @@ import app.organicmaps.telecom.importer.ColumnMapper;
 import app.organicmaps.telecom.importer.CsvParser;
 import app.organicmaps.telecom.importer.ImportSummary;
 import app.organicmaps.telecom.importer.TelecomCsvExporter;
+import app.organicmaps.telecom.importer.XlsxParser;
 import app.organicmaps.telecom.map.TelecomMapLayerManager;
 import app.organicmaps.telecom.model.TelecomSite;
 import com.google.android.material.appbar.MaterialToolbar;
@@ -71,6 +72,7 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
 
     Button btnSyncMap = findViewById(R.id.btn_sync_map);
     Button btnImportCsv = findViewById(R.id.btn_import_csv);
+    Button btnLoadDemoData = findViewById(R.id.btn_load_demo_data);
     Button btnExportCsv = findViewById(R.id.btn_export_csv);
 
     mSwitchMapLayer.setChecked(TelecomMapLayerManager.getInstance().isLayerVisible());
@@ -85,7 +87,7 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
         new ActivityResultContracts.OpenDocument(),
         uri -> {
           if (uri != null) {
-            handleSelectedCsv(uri);
+            handleSelectedFile(uri);
           }
         }
     );
@@ -104,13 +106,33 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
       }
     });
 
+    btnLoadDemoData.setOnClickListener(v -> {
+      int checkedId = mRgImportMode.getCheckedRadioButtonId();
+      if (checkedId == R.id.rb_mode_replace) {
+        new AlertDialog.Builder(this)
+            .setTitle("Confirm Dataset Replacement")
+            .setMessage("Are you sure you want to replace your entire telecom dataset with the Infra Tracker demo records?")
+            .setPositiveButton("Proceed", (dialog, which) -> loadDemoDataset())
+            .setNegativeButton("Cancel", null)
+            .show();
+      } else {
+        loadDemoDataset();
+      }
+    });
+
     btnExportCsv.setOnClickListener(v -> exportDatasetToCsv());
 
     updateStatistics();
   }
 
   private void launchFilePicker() {
-    mFilePickerLauncher.launch(new String[]{"text/comma-separated-values", "text/csv", "*/*"});
+    mFilePickerLauncher.launch(new String[]{
+        "text/comma-separated-values",
+        "text/csv",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "*/*"
+    });
   }
 
   private void updateStatistics() {
@@ -125,7 +147,71 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
     }).start();
   }
 
-  private void handleSelectedCsv(Uri uri) {
+  private void loadDemoDataset() {
+    ProgressDialog progress = new ProgressDialog(this);
+    progress.setMessage("Loading demo Infra Tracker records from assets...");
+    progress.setCancelable(false);
+    progress.show();
+
+    int checkedId = mRgImportMode.getCheckedRadioButtonId();
+    TelecomDatabaseHelper.ImportMode mode;
+    if (checkedId == R.id.rb_mode_add) {
+      mode = TelecomDatabaseHelper.ImportMode.ADD_NEW;
+    } else if (checkedId == R.id.rb_mode_replace) {
+      mode = TelecomDatabaseHelper.ImportMode.REPLACE_ALL;
+    } else {
+      mode = TelecomDatabaseHelper.ImportMode.UPDATE_EXISTING;
+    }
+
+    new Thread(() -> {
+      ImportSummary summary = new ImportSummary();
+      try (InputStream is = getAssets().open("telecom/infra_tracker_demo.csv")) {
+        List<List<String>> rows = CsvParser.parse(is);
+        if (rows.isEmpty()) {
+          throw new Exception("Demo dataset file is empty");
+        }
+
+        List<String> headers = rows.get(0);
+        ColumnMapper mapper = ColumnMapper.autoDetectMapping(headers);
+
+        List<TelecomSite> parsedSites = new ArrayList<>();
+        for (int i = 1; i < rows.size(); i++) {
+          summary.incrementTotal();
+          TelecomSite site = mapper.mapRow(rows.get(i), i + 1, summary);
+          if (site != null) {
+            parsedSites.add(site);
+          }
+        }
+
+        TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
+        int[] counts = db.insertBatch(parsedSites, mode);
+        for (int i = 0; i < counts[0]; i++) summary.incrementImported();
+        for (int i = 0; i < counts[1]; i++) summary.incrementUpdated();
+        for (int i = 0; i < counts[2]; i++) summary.incrementSkipped();
+
+        // Sync with map layer
+        TelecomMapLayerManager.getInstance().syncSitesToMap(this);
+
+        runOnUiThread(() -> {
+          progress.dismiss();
+          showImportSummaryDialog(summary);
+          updateStatistics();
+        });
+
+      } catch (Exception e) {
+        runOnUiThread(() -> {
+          progress.dismiss();
+          new AlertDialog.Builder(this)
+              .setTitle("Demo Load Failed")
+              .setMessage("Error loading demo dataset: " + e.getMessage())
+              .setPositiveButton("OK", null)
+              .show();
+        });
+      }
+    }).start();
+  }
+
+  private void handleSelectedFile(Uri uri) {
     ProgressDialog progress = new ProgressDialog(this);
     progress.setMessage("Importing telecom records...");
     progress.setCancelable(false);
@@ -147,9 +233,19 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
         if (is == null) {
           throw new Exception("Unable to open selected file");
         }
-        List<List<String>> rows = CsvParser.parse(is);
+
+        String uriStr = uri.toString().toLowerCase();
+        boolean isXlsx = uriStr.endsWith(".xlsx") || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(getContentResolver().getType(uri));
+
+        List<List<String>> rows;
+        if (isXlsx) {
+          rows = XlsxParser.parse(is, getCacheDir());
+        } else {
+          rows = CsvParser.parse(is);
+        }
+
         if (rows.isEmpty()) {
-          throw new Exception("CSV file is empty");
+          throw new Exception("File is empty or contains no valid rows");
         }
 
         List<String> headers = rows.get(0);
@@ -184,7 +280,7 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
           progress.dismiss();
           new AlertDialog.Builder(this)
               .setTitle("Import Failed")
-              .setMessage("Error during CSV import: " + e.getMessage())
+              .setMessage("Error during file import: " + e.getMessage())
               .setPositiveButton("OK", null)
               .show();
         });

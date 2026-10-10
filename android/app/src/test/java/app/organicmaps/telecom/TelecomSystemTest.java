@@ -217,4 +217,61 @@ public class TelecomSystemTest {
     assertEquals(0, summary.getInvalidCount());
     assertTrue("Processing 5,000 records should take less than 1.5s, took: " + elapsed + "ms", elapsed < 1500);
   }
+
+  @Test
+  public void testXlsxColumnRefToIndex() {
+    assertEquals(0, app.organicmaps.telecom.importer.XlsxParser.columnRefToIndex("A1"));
+    assertEquals(1, app.organicmaps.telecom.importer.XlsxParser.columnRefToIndex("B2"));
+    assertEquals(25, app.organicmaps.telecom.importer.XlsxParser.columnRefToIndex("Z10"));
+    assertEquals(26, app.organicmaps.telecom.importer.XlsxParser.columnRefToIndex("AA5"));
+    assertEquals(27, app.organicmaps.telecom.importer.XlsxParser.columnRefToIndex("AB1"));
+    assertEquals(46, app.organicmaps.telecom.importer.XlsxParser.columnRefToIndex("AU1"));
+  }
+
+  @Test
+  public void testInfraTrackerCompositeHeaderMapping() {
+    List<String> headers = List.of(
+        "SL No.", "CMP", "SAP ID", "JC Name", "Site Name", "Address", "Lat", "Long",
+        "Sites Scope", "Power Status", "Solar Site(Yes/No)", "Facility Type", "Technician Name",
+        "Techinician Number", "EB availibilty", "Site Load(Amp)", "SMPS Make", "SMPS Rating",
+        "Fault details", "Remarks", "BM Make", "BM Rating", "BB backup", "BM Physical Count",
+        "BM Faulty Count", "BM Remarks", "RM Make", "RM Rating", "RM Physical Count",
+        "RM Bypass Count", "RM Faulty Count", "RM Remarks", "DG Make", "DG Rating",
+        "GCU Make", "GCU Model", "GCU Faulty/GCU Working", "Fuel sensor status",
+        "automation status", "DGB/CD", "STATUS", "Solar MPPT Make", "MPPT Rating",
+        "Total MPPT count", "MPPT Faulty Count", "Other remarks", "VEGETATION STATUS"
+    );
+
+    ColumnMapper mapper = ColumnMapper.autoDetectMapping(headers);
+    assertEquals("site_id", mapper.getMappings().get(2)); // SAP ID
+    assertEquals("latitude", mapper.getMappings().get(6)); // Lat
+    assertEquals("longitude", mapper.getMappings().get(7)); // Long
+    assertEquals("technician_name", mapper.getMappings().get(12));
+    assertEquals("technician_phone", mapper.getMappings().get(13));
+    assertEquals("eb_availability", mapper.getMappings().get(14));
+    assertEquals("smps_make", mapper.getMappings().get(16));
+    assertEquals("bm_make", mapper.getMappings().get(20));
+    assertEquals("rm_make", mapper.getMappings().get(26));
+    assertEquals("dg_make", mapper.getMappings().get(32));
+
+    List<String> sampleRow = new ArrayList<>(headers.size());
+    for (int i = 0; i < headers.size(); i++) sampleRow.add("");
+    sampleRow.set(2, "I-WB-NDRT-ENB-9009");
+    sampleRow.set(4, "NANDAPUR");
+    sampleRow.set(6, "22.089841");
+    sampleRow.set(7, "87.889908");
+    sampleRow.set(12, "AMALESH MONDAL");
+    sampleRow.set(13, "6289037005");
+
+    ImportSummary summary = new ImportSummary();
+    TelecomSite site = mapper.mapRow(sampleRow, 1, summary);
+    assertNotNull(site);
+    assertEquals("I-WB-NDRT-ENB-9009", site.getSiteId());
+    assertEquals("NANDAPUR", site.getSiteName());
+    assertEquals(22.089841, site.getLatitude(), 0.00001);
+    assertEquals(87.889908, site.getLongitude(), 0.00001);
+    assertTrue(site.hasValidCoordinates());
+    assertEquals("AMALESH MONDAL", site.getTechnicianName());
+    assertEquals("6289037005", site.getTechnicianPhone());
+  }
 }
