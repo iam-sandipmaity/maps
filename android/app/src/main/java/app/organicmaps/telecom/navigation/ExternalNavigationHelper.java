@@ -137,74 +137,63 @@ public class ExternalNavigationHelper {
     double lat = site.getLatitude();
     double lon = site.getLongitude();
 
+    // 1. Try turn-by-turn navigation in Google Maps app
     if (turnByTurn) {
-      Uri navUri = Uri.parse(String.format(Locale.US, "google.navigation:q=%.6f,%.6f&mode=d", lat, lon));
-      Intent navIntent = new Intent(Intent.ACTION_VIEW, navUri);
-      navIntent.setPackage("com.google.android.apps.maps");
-      navIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-      if (isIntentResolvable(context, navIntent)) {
+      try {
+        Uri navUri = Uri.parse(String.format(Locale.US, "google.navigation:q=%.6f,%.6f&mode=d", lat, lon));
+        Intent navIntent = new Intent(Intent.ACTION_VIEW, navUri);
+        navIntent.setPackage("com.google.android.apps.maps");
+        navIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(navIntent);
         return;
-      }
+      } catch (Exception ignored) {}
     }
 
-    // Fallback: Google Maps search intent
-    Uri gmmIntentUri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f(%s)",
-        lat, lon, lat, lon, Uri.encode(site.getSiteId() + " " + site.getSiteName())));
-    Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-    mapIntent.setPackage("com.google.android.apps.maps");
-    mapIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    if (isIntentResolvable(context, mapIntent)) {
+    // 2. Try Google Maps search intent with explicit package
+    try {
+      Uri gmmIntentUri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f(%s)",
+          lat, lon, lat, lon, Uri.encode(site.getSiteId() + " " + site.getSiteName())));
+      Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
+      mapIntent.setPackage("com.google.android.apps.maps");
+      mapIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       context.startActivity(mapIntent);
       return;
-    }
+    } catch (Exception ignored) {}
 
-    // Web Fallback if Google Maps app is not installed
-    Uri webUri = Uri.parse(String.format(Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", lat, lon));
-    Intent webIntent = new Intent(Intent.ACTION_VIEW, webUri);
-    webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    if (isIntentResolvable(context, webIntent)) {
+    // 3. Try generic geo: intent without package restriction
+    try {
+      Uri geoUri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f(%s)",
+          lat, lon, lat, lon, Uri.encode(site.getSiteId() + " " + site.getSiteName())));
+      Intent geoIntent = new Intent(Intent.ACTION_VIEW, geoUri);
+      geoIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(geoIntent);
+      return;
+    } catch (Exception ignored) {}
+
+    // 4. Web Fallback if Google Maps app is not installed
+    try {
+      Uri webUri = Uri.parse(String.format(Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", lat, lon));
+      Intent webIntent = new Intent(Intent.ACTION_VIEW, webUri);
+      webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       context.startActivity(webIntent);
-    } else {
-      copyCoordinates(context, site);
-      showToast(context, "Google Maps not installed. Coordinates copied to clipboard.");
-    }
+      return;
+    } catch (Exception ignored) {}
+
+    // 5. Final fallback: copy coordinates
+    copyCoordinates(context, site);
+    showToast(context, "Google Maps is not installed. Coordinates copied to clipboard.");
   }
 
   /**
-   * Opens site location in Mappls (MapmyIndia) if installed.
+   * Opens site location in Mappls (MapmyIndia).
    */
   public static void openInMappls(@NonNull Context context, @NonNull TelecomSite site) {
     if (!site.hasValidCoords()) {
       showToast(context, "Site has no valid coordinates");
       return;
     }
-    double lat = site.getLatitude();
-    double lon = site.getLongitude();
-
-    // Mappls navigation URI scheme
-    Uri mapplsNavUri = Uri.parse(String.format(Locale.US, "mappls://nav?dest=%.6f,%.6f", lat, lon));
-    Intent mapplsIntent = new Intent(Intent.ACTION_VIEW, mapplsNavUri);
-    mapplsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    if (isIntentResolvable(context, mapplsIntent)) {
-      context.startActivity(mapplsIntent);
-      return;
-    }
-
-    // Mappls package direct intent
-    Uri mapplsGeoUri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f(%s)",
-        lat, lon, lat, lon, Uri.encode(site.getSiteId())));
-    Intent pkgIntent = new Intent(Intent.ACTION_VIEW, mapplsGeoUri);
-    pkgIntent.setPackage("com.mmi.maps");
-    pkgIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    if (isIntentResolvable(context, pkgIntent)) {
-      context.startActivity(pkgIntent);
-      return;
-    }
-
-    // Fallback: Show toast and copy coordinates
-    copyCoordinates(context, site);
-    showToast(context, "Mappls is not installed. Coordinates copied to clipboard.");
+    String label = site.getSiteId() + (site.getSiteName().isEmpty() ? "" : " " + site.getSiteName());
+    openInMappls(context, site.getLatitude(), site.getLongitude(), label);
   }
 
   /**
@@ -230,9 +219,6 @@ public class ExternalNavigationHelper {
     }
   }
 
-  private static boolean isIntentResolvable(@NonNull Context context, @NonNull Intent intent) {
-    return intent.resolveActivity(context.getPackageManager()) != null;
-  }
 
   private static void copyToClipboard(@NonNull Context context, String label, String text, String toastMessage) {
     ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
@@ -405,11 +391,15 @@ public class ExternalNavigationHelper {
     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()));
     intent.setPackage("com.google.android.apps.maps");
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    if (isIntentResolvable(context, intent)) {
+    try {
       context.startActivity(intent);
-    } else {
-      intent.setPackage(null);
-      context.startActivity(intent);
+    } catch (Exception e) {
+      try {
+        intent.setPackage(null);
+        context.startActivity(intent);
+      } catch (Exception e2) {
+        showToast(context, "Could not open Google Maps: " + e2.getMessage());
+      }
     }
   }
 
@@ -423,7 +413,7 @@ public class ExternalNavigationHelper {
 
   /**
    * Opens turn-by-turn navigation directly in Mappls (MapmyIndia) app or web fallback.
-   * Checks both official Google Play package (com.mapmyindia.b2c) and OEM package (com.mmi.maps).
+   * Checks generic mappls:// scheme, alternate URI, and known packages.
    */
   public static void openInMappls(@NonNull Context context, double lat, double lon, @NonNull String destinationName) {
     if (lat == 0.0 && lon == 0.0) {
@@ -435,10 +425,25 @@ public class ExternalNavigationHelper {
     String mapplsUri = String.format(Locale.US, "mappls://navigation?places=%.6f,%.6f,%s&isNav=true&mode=driving", lat, lon, encodedName);
     Uri parsedMapplsUri = Uri.parse(mapplsUri);
 
-    // List of known Mappls Android package names (Play Store is com.mapmyindia.b2c)
-    String[] mapplsPackages = new String[] { "com.mapmyindia.b2c", "com.mmi.maps" };
+    // 1. Try generic mappls:// deep link directly (system matches installed Mappls without requiring package visibility)
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, parsedMapplsUri);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(intent);
+      return;
+    } catch (Exception ignored) {}
 
-    // 1. Try launching directly with Mappls packages via deep link or geo URI
+    // 2. Try alternate mappls scheme: mappls://nav?dest=lat,lon
+    try {
+      Uri altMapplsUri = Uri.parse(String.format(Locale.US, "mappls://nav?dest=%.6f,%.6f", lat, lon));
+      Intent altIntent = new Intent(Intent.ACTION_VIEW, altMapplsUri);
+      altIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(altIntent);
+      return;
+    } catch (Exception ignored) {}
+
+    // 3. Try known Mappls packages via deep link or geo URI
+    String[] mapplsPackages = new String[] { "com.mapmyindia.b2c", "com.mmi.maps", "com.mapmyindia.move" };
     for (String pkg : mapplsPackages) {
       try {
         Intent intent = new Intent(Intent.ACTION_VIEW, parsedMapplsUri);
@@ -447,7 +452,6 @@ public class ExternalNavigationHelper {
         context.startActivity(intent);
         return;
       } catch (Exception ignored) {
-        // Fallback to geo intent directed at this package
         try {
           Uri geoUri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f(%s)", lat, lon, lat, lon, encodedName));
           Intent geoIntent = new Intent(Intent.ACTION_VIEW, geoUri);
@@ -459,15 +463,7 @@ public class ExternalNavigationHelper {
       }
     }
 
-    // 2. Try generic mappls:// URI without package restriction
-    try {
-      Intent intent = new Intent(Intent.ACTION_VIEW, parsedMapplsUri);
-      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-      context.startActivity(intent);
-      return;
-    } catch (Exception ignored) {}
-
-    // 3. Fallback: Open in web browser
+    // 4. Fallback: Open in web browser
     try {
       String webUri = String.format(Locale.US, "https://mappls.com/navigation?places=%.6f,%.6f,%s&isNav=true&mode=driving", lat, lon, encodedName);
       Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(webUri));
@@ -476,14 +472,9 @@ public class ExternalNavigationHelper {
       return;
     } catch (Exception ignored) {}
 
-    // 4. Fallback: Google Play Store with official package com.mapmyindia.b2c
-    try {
-      Intent marketIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.mapmyindia.b2c"));
-      marketIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-      context.startActivity(marketIntent);
-    } catch (Exception e) {
-      showToast(context, "Mappls (MapmyIndia) is not installed");
-    }
+    // 5. Final fallback: Copy coordinates to clipboard instead of opening market:// details
+    copyToClipboard(context, "Mappls Coordinates", String.format(Locale.US, "%.6f, %.6f", lat, lon),
+        "Mappls is not installed. Coordinates copied to clipboard.");
   }
 
   /**
