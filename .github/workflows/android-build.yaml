@@ -24,12 +24,12 @@ on:
       arch:
         description: 'Target Architecture'
         required: true
-        default: 'universal'
+        default: 'arm64'
         type: choice
         options:
-          - universal
           - arm64
           - arm32
+          - universal
 
 env:
   SKIP_MAP_DOWNLOAD: true
@@ -102,13 +102,13 @@ jobs:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           FLAVOR="${{ inputs.flavor || 'FdroidDebug' }}"
-          ARCH="${{ inputs.arch || 'universal' }}"
+          ARCH="${{ inputs.arch || 'arm64' }}"
           if [ "$ARCH" = "universal" ]; then
-            echo "Building universal APK: assemble${FLAVOR} (supports all devices)"
-            ./gradlew "assemble${FLAVOR}"
+            echo "Building universal APK without HWAsan: assemble${FLAVOR}"
+            ./gradlew -PdisableHWAsan "assemble${FLAVOR}"
           else
-            echo "Building flavor: assemble${FLAVOR} for arch: -P${ARCH}"
-            ./gradlew -P${ARCH} "assemble${FLAVOR}"
+            echo "Building flavor: assemble${FLAVOR} for arch: -P${ARCH} without HWAsan"
+            ./gradlew -P${ARCH} -PdisableHWAsan "assemble${FLAVOR}"
           fi
 
       - name: Upload APK Artifact
