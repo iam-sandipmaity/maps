@@ -10,6 +10,8 @@ import androidx.annotation.Nullable;
 import app.organicmaps.telecom.model.TelecomSite;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class TelecomDatabaseHelper extends SQLiteOpenHelper {
 
@@ -381,7 +383,41 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
   }
 
   /**
-   * Fast offline search by Site ID, partial Site ID, site name, JC location, technician, or remarks with pagination.
+   * Extracts search tokens from user query.
+   * Splits on punctuation, spaces, and transitions between letters and digits (e.g. "kgpo9030" -> "kgpo", "9030", "rt01" -> "rt", "01").
+   */
+  @NonNull
+  public static List<String> extractSearchTokens(@NonNull String query) {
+    List<String> tokens = new ArrayList<>();
+    String trimmed = query.trim();
+    if (trimmed.isEmpty()) {
+      return tokens;
+    }
+
+    String[] parts = trimmed.split("[\\s\\-_/.,+#:;]+");
+    for (String part : parts) {
+      if (part.isEmpty()) {
+        continue;
+      }
+      Matcher matcher = Pattern.compile("([a-zA-Z]+|[0-9]+)").matcher(part);
+      while (matcher.find()) {
+        String token = matcher.group();
+        if (!token.isEmpty()) {
+          tokens.add(token);
+        }
+      }
+    }
+    return tokens;
+  }
+
+  /**
+   * Fast offline search with smart SAP ID matching, sequence wildcard matching, and multi-token ranking.
+   * Handles:
+   * - "kgpo 9030", "slbn 9036", "egro 9006" skipping technology/state codes ("-ENB-", "-ESC-", "-ILA-")
+   * - "kgpo9030", "slbn9036" (letters concatenated with digits)
+   * - RailTel sites ("rt01", "rt 01", "rt10")
+   * - COW sites ("cow 01", "kgpo cow")
+   * - General search across site name, JC location, technician, remarks with strict precision.
    */
   @NonNull
   public List<TelecomSite> searchSites(@NonNull String query, int limit, int offset) {
@@ -392,26 +428,139 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
     }
 
     SQLiteDatabase db = getReadableDatabase();
-    String likeQuery = "%" + q + "%";
-    String exactQuery = q;
+    List<String> tokens = extractSearchTokens(q);
+    if (tokens.isEmpty()) {
+      return getAllSites(limit > 0 ? limit : 50, offset);
+    }
 
-    // Search query prioritizing exact or prefix site_id match first, then partial match across fields
     StringBuilder sql = new StringBuilder();
-    sql.append("SELECT * FROM ").append(TABLE_SITES).append(" WHERE ")
-       .append(COL_SITE_ID).append(" LIKE ? OR ")
-       .append(COL_SITE_NAME).append(" LIKE ? OR ")
-       .append(COL_LOCATION).append(" LIKE ? OR ")
-       .append(COL_TECH_NAME).append(" LIKE ? OR ")
-       .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
-       .append(COL_NOTES).append(" LIKE ? ")
-       .append(" ORDER BY ")
-       .append("   CASE ")
-       .append("     WHEN ").append(COL_SITE_ID).append(" = ? THEN 1 ")
-       .append("     WHEN ").append(COL_SITE_ID).append(" LIKE ? THEN 2 ")
-       .append("     WHEN ").append(COL_SITE_NAME).append(" LIKE ? THEN 3 ")
-       .append("     ELSE 4 ")
-       .append("   END, ")
-       .append("   ").append(COL_SITE_ID).append(" ASC ");
+    List<String> argsList = new ArrayList<>();
+    String rawLikeQuery = "%" + q + "%";
+
+    if (tokens.size() == 1) {
+      String token = tokens.get(0);
+      String likeToken = "%" + token + "%";
+      String prefixToken = token + "%";
+
+      sql.append("SELECT * FROM ").append(TABLE_SITES).append(" WHERE ")
+         .append(COL_SITE_ID).append(" LIKE ? OR ")
+         .append(COL_SITE_NAME).append(" LIKE ? OR ")
+         .append(COL_LOCATION).append(" LIKE ? OR ")
+         .append(COL_TECH_NAME).append(" LIKE ? OR ")
+         .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+         .append(COL_NOTES).append(" LIKE ? ")
+         .append(" ORDER BY ")
+         .append("   CASE ")
+         .append("     WHEN ").append(COL_SITE_ID).append(" = ? THEN 1 ")
+         .append("     WHEN ").append(COL_SITE_ID).append(" LIKE ? THEN 2 ")
+         .append("     WHEN ").append(COL_SITE_ID).append(" LIKE ? THEN 3 ")
+         .append("     WHEN ").append(COL_SITE_NAME).append(" LIKE ? THEN 4 ")
+         .append("     ELSE 5 ")
+         .append("   END, ")
+         .append("   ").append(COL_SITE_ID).append(" ASC ");
+
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+
+      // Order by args
+      argsList.add(q);
+      argsList.add(prefixToken);
+      argsList.add(likeToken);
+      argsList.add(prefixToken);
+    } else {
+      // Multi-token: build sequential pattern "%t1%t2%...%tn%" to skip intermediate hyphens and tech tags (ENB, ESC, ILA)
+      StringBuilder seqSb = new StringBuilder("%");
+      for (String t : tokens) {
+        seqSb.append(t).append("%");
+      }
+      String seqPattern = seqSb.toString();
+
+      sql.append("SELECT * FROM ").append(TABLE_SITES).append(" WHERE (");
+
+      // 1. Site ID sequential match (e.g. "%kgpo%9030%" matches "I-WB-KGPO-ENB-9030" or "%rt%01%" matches "RT01")
+      sql.append(COL_SITE_ID).append(" LIKE ? ");
+      argsList.add(seqPattern);
+
+      // 2. Site ID contains all tokens in any order (e.g. user typed number first "9030 kgpo")
+      sql.append(" OR (");
+      for (int i = 0; i < tokens.size(); i++) {
+        if (i > 0) sql.append(" AND ");
+        sql.append(COL_SITE_ID).append(" LIKE ?");
+        argsList.add("%" + tokens.get(i) + "%");
+      }
+      sql.append(")");
+
+      // 3. Literal continuous substring match across columns
+      sql.append(" OR (")
+         .append(COL_SITE_ID).append(" LIKE ? OR ")
+         .append(COL_SITE_NAME).append(" LIKE ? OR ")
+         .append(COL_LOCATION).append(" LIKE ? OR ")
+         .append(COL_TECH_NAME).append(" LIKE ? OR ")
+         .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+         .append(COL_NOTES).append(" LIKE ?")
+         .append(")");
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+
+      // 4. Record-wide token conjunction (every token must be matched in at least one field)
+      sql.append(" OR (");
+      for (int i = 0; i < tokens.size(); i++) {
+        if (i > 0) sql.append(" AND ");
+        String tLike = "%" + tokens.get(i) + "%";
+        sql.append("(")
+           .append(COL_SITE_ID).append(" LIKE ? OR ")
+           .append(COL_SITE_NAME).append(" LIKE ? OR ")
+           .append(COL_LOCATION).append(" LIKE ? OR ")
+           .append(COL_TECH_NAME).append(" LIKE ? OR ")
+           .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+           .append(COL_NOTES).append(" LIKE ?")
+           .append(")");
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+      }
+      sql.append(")");
+
+      sql.append(")"); // close WHERE
+
+      // Relevance ranking
+      sql.append(" ORDER BY ")
+         .append("   CASE ")
+         .append("     WHEN ").append(COL_SITE_ID).append(" = ? THEN 1 ")
+         .append("     WHEN ").append(COL_SITE_ID).append(" LIKE ? THEN 2 ")
+         .append("     WHEN ").append(COL_SITE_ID).append(" LIKE ? THEN 3 ")
+         .append("     WHEN (");
+      for (int i = 0; i < tokens.size(); i++) {
+        if (i > 0) sql.append(" AND ");
+        sql.append(COL_SITE_ID).append(" LIKE ?");
+      }
+      sql.append("     ) THEN 4 ")
+         .append("     WHEN ").append(COL_SITE_NAME).append(" LIKE ? THEN 5 ")
+         .append("     WHEN ").append(COL_LOCATION).append(" LIKE ? THEN 6 ")
+         .append("     ELSE 7 ")
+         .append("   END, ")
+         .append("   ").append(COL_SITE_ID).append(" ASC ");
+
+      argsList.add(q);
+      argsList.add(q + "%");
+      argsList.add(seqPattern);
+      for (String t : tokens) {
+        argsList.add("%" + t + "%");
+      }
+      argsList.add(seqPattern);
+      argsList.add(seqPattern);
+    }
 
     if (limit > 0) {
       sql.append(" LIMIT ").append(limit);
@@ -420,10 +569,7 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
       }
     }
 
-    String prefixQuery = q + "%";
-    String[] args = new String[]{likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery,
-        exactQuery, prefixQuery, prefixQuery};
-
+    String[] args = argsList.toArray(new String[0]);
     Cursor c = db.rawQuery(sql.toString(), args);
     while (c.moveToNext()) {
       results.add(cursorToSite(c));
@@ -438,24 +584,97 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
   }
 
   /**
-   * Returns total count of sites matching a search query.
+   * Returns total count of sites matching a search query with the same smart matching logic.
    */
   public int countSites(@NonNull String query) {
     String q = query.trim();
     if (q.isEmpty()) {
       return getSitesCount();
     }
+    List<String> tokens = extractSearchTokens(q);
+    if (tokens.isEmpty()) {
+      return getSitesCount();
+    }
+
     SQLiteDatabase db = getReadableDatabase();
-    String likeQuery = "%" + q + "%";
-    String sql = "SELECT COUNT(*) FROM " + TABLE_SITES + " WHERE "
-        + COL_SITE_ID + " LIKE ? OR "
-        + COL_SITE_NAME + " LIKE ? OR "
-        + COL_LOCATION + " LIKE ? OR "
-        + COL_TECH_NAME + " LIKE ? OR "
-        + COL_SUPERVISOR_NAME + " LIKE ? OR "
-        + COL_NOTES + " LIKE ?";
-    String[] args = new String[]{likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery};
-    Cursor c = db.rawQuery(sql, args);
+    StringBuilder sql = new StringBuilder();
+    List<String> argsList = new ArrayList<>();
+
+    if (tokens.size() == 1) {
+      String token = tokens.get(0);
+      String likeToken = "%" + token + "%";
+      sql.append("SELECT COUNT(*) FROM ").append(TABLE_SITES).append(" WHERE ")
+         .append(COL_SITE_ID).append(" LIKE ? OR ")
+         .append(COL_SITE_NAME).append(" LIKE ? OR ")
+         .append(COL_LOCATION).append(" LIKE ? OR ")
+         .append(COL_TECH_NAME).append(" LIKE ? OR ")
+         .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+         .append(COL_NOTES).append(" LIKE ?");
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+      argsList.add(likeToken);
+    } else {
+      StringBuilder seqSb = new StringBuilder("%");
+      for (String t : tokens) {
+        seqSb.append(t).append("%");
+      }
+      String seqPattern = seqSb.toString();
+      String rawLikeQuery = "%" + q + "%";
+
+      sql.append("SELECT COUNT(*) FROM ").append(TABLE_SITES).append(" WHERE (")
+         .append(COL_SITE_ID).append(" LIKE ? ");
+      argsList.add(seqPattern);
+
+      sql.append(" OR (");
+      for (int i = 0; i < tokens.size(); i++) {
+        if (i > 0) sql.append(" AND ");
+        sql.append(COL_SITE_ID).append(" LIKE ?");
+        argsList.add("%" + tokens.get(i) + "%");
+      }
+      sql.append(")");
+
+      sql.append(" OR (")
+         .append(COL_SITE_ID).append(" LIKE ? OR ")
+         .append(COL_SITE_NAME).append(" LIKE ? OR ")
+         .append(COL_LOCATION).append(" LIKE ? OR ")
+         .append(COL_TECH_NAME).append(" LIKE ? OR ")
+         .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+         .append(COL_NOTES).append(" LIKE ?")
+         .append(")");
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+      argsList.add(rawLikeQuery);
+
+      sql.append(" OR (");
+      for (int i = 0; i < tokens.size(); i++) {
+        if (i > 0) sql.append(" AND ");
+        String tLike = "%" + tokens.get(i) + "%";
+        sql.append("(")
+           .append(COL_SITE_ID).append(" LIKE ? OR ")
+           .append(COL_SITE_NAME).append(" LIKE ? OR ")
+           .append(COL_LOCATION).append(" LIKE ? OR ")
+           .append(COL_TECH_NAME).append(" LIKE ? OR ")
+           .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+           .append(COL_NOTES).append(" LIKE ?")
+           .append(")");
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+        argsList.add(tLike);
+      }
+      sql.append("))");
+    }
+
+    String[] args = argsList.toArray(new String[0]);
+    Cursor c = db.rawQuery(sql.toString(), args);
     int count = 0;
     if (c.moveToFirst()) {
       count = c.getInt(0);

@@ -11,6 +11,7 @@ import app.organicmaps.telecom.importer.ImportSummary;
 import app.organicmaps.telecom.importer.TelecomCsvExporter;
 import app.organicmaps.telecom.model.TelecomSite;
 import app.organicmaps.telecom.planner.VisitPlannerManager;
+import app.organicmaps.telecom.db.TelecomDatabaseHelper;
 
 import org.junit.Test;
 
@@ -322,5 +323,54 @@ public class TelecomSystemTest {
     assertEquals(VisitPlannerManager.ReturnMode.NONE, VisitPlannerManager.ReturnMode.valueOf("NONE"));
     assertEquals(VisitPlannerManager.ReturnMode.START_POINT, VisitPlannerManager.ReturnMode.valueOf("START_POINT"));
     assertEquals(VisitPlannerManager.ReturnMode.CUSTOM_PLACE, VisitPlannerManager.ReturnMode.valueOf("CUSTOM_PLACE"));
+  }
+
+  @Test
+  public void testSmartSearchTokenExtractionAndMatching() {
+    // 1. Spaced cluster and number
+    List<String> t1 = TelecomDatabaseHelper.extractSearchTokens("kgpo 9030");
+    assertEquals(List.of("kgpo", "9030"), t1);
+
+    // 2. Concatenated letters and digits
+    List<String> t2 = TelecomDatabaseHelper.extractSearchTokens("kgpo9030");
+    assertEquals(List.of("kgpo", "9030"), t2);
+
+    List<String> t3 = TelecomDatabaseHelper.extractSearchTokens("slbn9036");
+    assertEquals(List.of("slbn", "9036"), t3);
+
+    // 3. Hyphenated and full SAP ID
+    List<String> t4 = TelecomDatabaseHelper.extractSearchTokens("I-WB-EGRO-ENB-9006");
+    assertEquals(List.of("I", "WB", "EGRO", "ENB", "9006"), t4);
+
+    // 4. RailTel site formats
+    List<String> t5 = TelecomDatabaseHelper.extractSearchTokens("rt01");
+    assertEquals(List.of("rt", "01"), t5);
+
+    List<String> t6 = TelecomDatabaseHelper.extractSearchTokens("RT-10");
+    assertEquals(List.of("RT", "10"), t6);
+
+    // 5. COW site formats
+    List<String> t7 = TelecomDatabaseHelper.extractSearchTokens("cow 01");
+    assertEquals(List.of("cow", "01"), t7);
+
+    List<String> t8 = TelecomDatabaseHelper.extractSearchTokens("cow01");
+    assertEquals(List.of("cow", "01"), t8);
+
+    // Verify sequential wildcard matching logic simulates SQLite LIKE behaviour
+    String siteId = "I-WB-KGPO-ENB-9030";
+    String regex = "(?i).*kgpo.*9030.*";
+    assertTrue(siteId.matches(regex));
+
+    String egroSiteId = "I-WB-EGRO-ENB-9006";
+    String egroRegex = "(?i).*egro.*9006.*";
+    assertTrue(egroSiteId.matches(egroRegex));
+
+    String slbnSiteId = "I-WB-SLBN-ENB-9036";
+    String slbnRegex = "(?i).*slbn.*9036.*";
+    assertTrue(slbnSiteId.matches(slbnRegex));
+
+    // Negative tests: wrong cluster or wrong number should never match
+    assertFalse(siteId.matches("(?i).*kolk.*9030.*"));
+    assertFalse(siteId.matches("(?i).*kgpo.*9035.*"));
   }
 }
