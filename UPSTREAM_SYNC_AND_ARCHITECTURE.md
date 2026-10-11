@@ -16,7 +16,7 @@ android/app/src/main/java/app/organicmaps/telecom/
 ├── importer/    # Excel (.xlsx) and CSV batch parsers & exporters
 ├── map/         # Native BookmarkManager KML layer manager (TelecomMapLayerManager)
 ├── model/       # TelecomSite data model & schemas
-├── navigation/  # External navigation intents & BRouter/GraphHopper road snapper (TelecomRoadSnapper)
+├── navigation/  # External navigation helpers & deep link intents (ExternalNavigationHelper)
 ├── planner/     # Nearest-Neighbor & 2-Opt TSP visit route optimizer (VisitPlannerManager)
 └── ui/          # Site details, search, visit planner, and data management activities
 ```
@@ -90,14 +90,7 @@ git push origin main
 
 ## 4. Key Telecom Features Overview
 
-### 4.1 BRouter / GraphHopper Off-Road Road Snapper (`TelecomRoadSnapper`)
-* **Problem:** In rural telecom operations, towers are often located in fields, hills, or unmapped private tracks >150m from OpenStreetMap roads. Passing raw coordinates into CoMaps' offline C++ router aborts the route calculation with `INTERMEDIATE_POINT_NOT_FOUND` (12).
-* **Solution:**
-  * Calculates orthogonal road corridor projections for each off-road site.
-  * Passes the calculated **Road Access Point** coordinate into CoMaps' router, ensuring 100% road-snapping success.
-  * In the map overlay, renders a blue pin at the road access point (`[3-Road] Access for Site 3`) and an amber approach connector line (`#approach-track`) leading directly to the physical tower pin.
-
-### 4.2 Multi-Stop Visit Planner & TSP Optimizer
+### 4.1 Multi-Stop Visit Planner & TSP Optimizer
 * Supports adding up to dozens of telecom sites to an itinerary.
 * **TSP Optimization:** Uses Nearest-Neighbor and 2-Opt heuristic optimization to order sites for the shortest driving distance from the technician's current GPS location.
 * **Itinerary Export:**
@@ -105,6 +98,6 @@ git push origin main
   * **Google Maps:** Direct deep link opening complete multi-stop routes with satellite view.
   * **Mappls (MapmyIndia):** Turn-by-turn navigation for next stop.
 
-### 4.3 Intelligent Telecom Search
+### 4.2 Intelligent Telecom Search
 * Tokenized search engine handling SAP IDs (e.g. `I-WB-KGPO-ENB-9030`), unspaced queries (`kgpo9030`, `slbn9036`), RailTel sites (`RT01`, `RT10`), and COW sites.
 * Automatically ignores non-critical technology codes (`-ENB-`, `-ESC-`, `-ILA-`, `-I-`, etc.) to match technician queries instantly.

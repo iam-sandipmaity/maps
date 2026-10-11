@@ -308,22 +308,10 @@ public class ExternalNavigationHelper {
       double destLon;
       String destLabel;
 
-      // Calculate BRouter / GraphHopper style road corridor projections
-      List<TelecomRoadSnapper.SnappedWaypoint> snappedStops =
-          TelecomRoadSnapper.snapVisitPlan(originLat, originLon, stops, hasReturn, returnLat, returnLon);
-
       if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
         destLat = returnLat;
         destLon = returnLon;
         destLabel = "Return: " + returnLabel;
-      } else if (!snappedStops.isEmpty()) {
-        TelecomRoadSnapper.SnappedWaypoint lastWp = snappedStops.get(snappedStops.size() - 1);
-        TelecomSite lastSite = lastWp.getSite();
-        destLat = lastWp.isOffRoad() ? lastWp.getRoadLat() : lastWp.getOriginalLat();
-        destLon = lastWp.isOffRoad() ? lastWp.getRoadLon() : lastWp.getOriginalLon();
-        destLabel = lastWp.isOffRoad()
-            ? lastSite.getSiteId() + " (Road Access)"
-            : lastSite.getSiteId();
       } else {
         TelecomSite lastSite = stops.get(stops.size() - 1);
         destLat = lastSite.getLatitude();
@@ -348,26 +336,16 @@ public class ExternalNavigationHelper {
           RouteMarkType.Start, 0, !isStartMyPos, isStartMyPos, false, originLat, originLon));
 
       // Intermediate stops:
-      // For off-road sites (>150m from road axis), we route to the calculated Road Access Point on the road network.
-      // This prevents ResultCodes.INTERMEDIATE_POINT_NOT_FOUND aborts while guiding the vehicle past the closest road point.
-      int endIndex = (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) ? snappedStops.size() : snappedStops.size() - 1;
+      // For offline road networks, adding more than 4 intermediate points at once can cause offline road snapping failure.
+      // We safely add up to 4 intermediate points for active navigation, while all stops are displayed on the map layer.
+      int endIndex = (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) ? stops.size() : stops.size() - 1;
       int startIndex = (startLat != 0.0 || startLon != 0.0) ? 0 : 1;
       int intermediateIndex = 0;
       for (int i = startIndex; i < endIndex; i++) {
-        TelecomRoadSnapper.SnappedWaypoint wp = snappedStops.get(i);
-        TelecomSite s = wp.getSite();
+        TelecomSite s = stops.get(i);
         if (s.hasValidCoords()) {
-          double targetLat = wp.isOffRoad() ? wp.getRoadLat() : wp.getOriginalLat();
-          double targetLon = wp.isOffRoad() ? wp.getRoadLon() : wp.getOriginalLon();
-          String targetTitle = wp.isOffRoad()
-              ? s.getSiteId() + " (Road Access)"
-              : s.getSiteId();
-          String targetSubtitle = wp.isOffRoad()
-              ? wp.getApproachSummary()
-              : s.getSiteName();
-
-          Framework.addRoutePoint(new RouteMarkData(targetTitle, targetSubtitle,
-              RouteMarkType.Intermediate, intermediateIndex, true, false, false, targetLat, targetLon), false);
+          Framework.addRoutePoint(new RouteMarkData(s.getSiteId(), s.getSiteName(),
+              RouteMarkType.Intermediate, intermediateIndex, true, false, false, s.getLatitude(), s.getLongitude()), false);
           intermediateIndex++;
         }
       }
