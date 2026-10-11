@@ -274,4 +274,30 @@ public class TelecomSystemTest {
     assertEquals("AMALESH MONDAL", site.getTechnicianName());
     assertEquals("6289037005", site.getTechnicianPhone());
   }
+
+  @Test
+  public void testHaversineAndRoundTripDistance() {
+    double startLat = 22.3456;
+    double startLon = 87.1234;
+
+    double site1Lat = 22.3800;
+    double site1Lon = 87.1500;
+
+    double site2Lat = 22.4200;
+    double site2Lon = 87.2000;
+
+    double leg1 = VisitPlannerManager.calculateHaversineDistanceKm(startLat, startLon, site1Lat, site1Lon);
+    double leg2 = VisitPlannerManager.calculateHaversineDistanceKm(site1Lat, site1Lon, site2Lat, site2Lon);
+    double returnLeg = VisitPlannerManager.calculateHaversineDistanceKm(site2Lat, site2Lon, startLat, startLon);
+
+    assertTrue(leg1 > 0);
+    assertTrue(leg2 > 0);
+    assertTrue(returnLeg > 0);
+
+    double oneWayTotal = leg1 + leg2;
+    double roundTripTotal = leg1 + leg2 + returnLeg;
+
+    assertTrue(roundTripTotal > oneWayTotal);
+    assertEquals(returnLeg, roundTripTotal - oneWayTotal, 0.0001);
+  }
 }

@@ -11,7 +11,13 @@ import androidx.annotation.Nullable;
 import app.organicmaps.MwmActivity;
 import app.organicmaps.R;
 import app.organicmaps.sdk.Framework;
+import app.organicmaps.sdk.bookmarks.data.FeatureId;
+import app.organicmaps.sdk.bookmarks.data.MapObject;
+import app.organicmaps.sdk.routing.RoutingController;
+import app.organicmaps.telecom.map.TelecomMapLayerManager;
 import app.organicmaps.telecom.model.TelecomSite;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 public class ExternalNavigationHelper {
@@ -231,6 +237,132 @@ public class ExternalNavigationHelper {
       ClipData clip = ClipData.newPlainText(label, text);
       clipboard.setPrimaryClip(clip);
       showToast(context, toastMessage);
+    }
+  }
+
+  /**
+   * Visualizes planned visit route in CoMaps with numbered waypoints and prepares turn-by-turn routing.
+   */
+  public static void showRouteInCoMaps(@NonNull Context context,
+                                       double startLat,
+                                       double startLon,
+                                       @NonNull String startLabel,
+                                       @NonNull List<TelecomSite> stops,
+                                       boolean returnToStart) {
+    if (stops.isEmpty()) {
+      showToast(context, "No stops in visit plan");
+      return;
+    }
+
+    // 1. Sync numbered placemarks into CoMaps map layer
+    TelecomMapLayerManager.getInstance().syncRouteToMap(context, startLat, startLon, startLabel, stops, returnToStart);
+
+    // 2. Prepare native routing controller
+    try {
+      double originLat = (startLat != 0.0 || startLon != 0.0) ? startLat : stops.get(0).getLatitude();
+      double originLon = (startLat != 0.0 || startLon != 0.0) ? startLon : stops.get(0).getLongitude();
+
+      MapObject startPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, "Start: " + startLabel, "", originLat, originLon);
+
+      double destLat;
+      double destLon;
+      String destLabel;
+
+      if (returnToStart) {
+        destLat = originLat;
+        destLon = originLon;
+        destLabel = "Return: " + startLabel;
+      } else {
+        TelecomSite lastSite = stops.get(stops.size() - 1);
+        destLat = lastSite.getLatitude();
+        destLon = lastSite.getLongitude();
+        destLabel = lastSite.getSiteId();
+      }
+
+      MapObject endPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, destLabel, "", destLat, destLon);
+
+      RoutingController.get().prepare(startPoint, endPoint);
+
+      // Add intermediate stops
+      int endIndex = returnToStart ? stops.size() : stops.size() - 1;
+      int startIndex = (startLat != 0.0 || startLon != 0.0) ? 0 : 1;
+      for (int i = startIndex; i < endIndex; i++) {
+        TelecomSite s = stops.get(i);
+        if (s.hasValidCoords()) {
+          RoutingController.get().addStop(MapObject.createMapObject(FeatureId.EMPTY, MapObject.POI, s.getSiteId(), "", s.getLatitude(), s.getLongitude()));
+        }
+      }
+    } catch (Exception ignored) {
+      // Placemark layer remains visible even if native routing data is partially available
+    }
+
+    // 3. Launch MwmActivity centered on starting point or first stop
+    double centerLat = (startLat != 0.0) ? startLat : stops.get(0).getLatitude();
+    double centerLon = (startLon != 0.0) ? startLon : stops.get(0).getLongitude();
+    Intent intent = new Intent(context, MwmActivity.class);
+    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+    intent.setData(Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?z=13", centerLat, centerLon)));
+    context.startActivity(intent);
+  }
+
+  /**
+   * Opens Google Maps with origin, intermediate waypoints, and destination in one complete itinerary.
+   */
+  public static void openMultiStopInGoogleMaps(@NonNull Context context,
+                                               double startLat,
+                                               double startLon,
+                                               @NonNull List<TelecomSite> stops,
+                                               boolean returnToStart) {
+    if (stops.isEmpty()) {
+      showToast(context, "No stops in visit plan");
+      return;
+    }
+
+    double originLat = (startLat != 0.0 || startLon != 0.0) ? startLat : stops.get(0).getLatitude();
+    double originLon = (startLat != 0.0 || startLon != 0.0) ? startLon : stops.get(0).getLongitude();
+
+    double destLat;
+    double destLon;
+    if (returnToStart) {
+      destLat = originLat;
+      destLon = originLon;
+    } else {
+      TelecomSite last = stops.get(stops.size() - 1);
+      destLat = last.getLatitude();
+      destLon = last.getLongitude();
+    }
+
+    StringBuilder url = new StringBuilder();
+    url.append("https://www.google.com/maps/dir/?api=1")
+       .append(String.format(Locale.US, "&origin=%.6f,%.6f", originLat, originLon))
+       .append(String.format(Locale.US, "&destination=%.6f,%.6f", destLat, destLon));
+
+    int endIndex = returnToStart ? stops.size() : stops.size() - 1;
+    int startIndex = (startLat != 0.0 || startLon != 0.0) ? 0 : 1;
+    List<String> waypoints = new ArrayList<>();
+    for (int i = startIndex; i < endIndex; i++) {
+      TelecomSite s = stops.get(i);
+      if (s.hasValidCoords()) {
+        waypoints.add(String.format(Locale.US, "%.6f,%.6f", s.getLatitude(), s.getLongitude()));
+      }
+    }
+
+    if (!waypoints.isEmpty()) {
+      url.append("&waypoints=");
+      for (int i = 0; i < waypoints.size(); i++) {
+        if (i > 0) url.append("%7C"); // URL-encoded pipe |
+        url.append(waypoints.get(i));
+      }
+    }
+
+    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()));
+    intent.setPackage("com.google.android.apps.maps");
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    if (isIntentResolvable(context, intent)) {
+      context.startActivity(intent);
+    } else {
+      intent.setPackage(null);
+      context.startActivity(intent);
     }
   }
 

@@ -19,11 +19,86 @@
 
   </com.google.android.material.appbar.AppBarLayout>
 
-  <!-- Summary Card -->
+  <!-- Start Location & Journey Settings Card -->
   <com.google.android.material.card.MaterialCardView
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:layout_margin="8dp"
+      android:layout_marginHorizontal="8dp"
+      android:layout_marginTop="8dp"
+      android:layout_marginBottom="4dp"
+      app:cardCornerRadius="8dp"
+      app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+      <TextView
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="Journey Starting Point"
+          android:textAppearance="?attr/textAppearanceCaption"
+          android:textStyle="bold"
+          android:textColor="?android:attr/textColorSecondary" />
+
+      <TextView
+          android:id="@+id/tv_start_location"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="2dp"
+          android:text="Starting From: First Selected Site"
+          android:textAppearance="?attr/textAppearanceSubtitle2"
+          android:textStyle="bold" />
+
+      <LinearLayout
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="6dp"
+          android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_set_my_location"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="Use My Location" />
+
+        <Button
+            android:id="@+id/btn_reset_start"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Reset Start" />
+
+      </LinearLayout>
+
+      <View
+          android:layout_width="match_parent"
+          android:layout_height="1dp"
+          android:layout_marginVertical="8dp"
+          android:background="?attr/dividerHorizontal" />
+
+      <com.google.android.material.switchmaterial.SwitchMaterial
+          android:id="@+id/switch_return_to_start"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="Return to start point (Round trip)"
+          android:textAppearance="?attr/textAppearanceBody2" />
+
+    </LinearLayout>
+
+  </com.google.android.material.card.MaterialCardView>
+
+  <!-- Summary & Actions Card -->
+  <com.google.android.material.card.MaterialCardView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginHorizontal="8dp"
+      android:layout_marginVertical="4dp"
       app:cardCornerRadius="8dp"
       app:cardElevation="2dp">
 
@@ -62,20 +137,11 @@
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
           android:layout_marginTop="2dp"
-          android:text="*Distance shown is approximate great-circle travel; road distances vary by network."
+          android:text="*Straight-line geodesic distance; road driving times vary."
           android:textAppearance="?attr/textAppearanceCaption"
           android:textColor="?android:attr/textColorSecondary" />
 
-      <TextView
-          android:id="@+id/tv_start_location"
-          android:layout_width="match_parent"
-          android:layout_height="wrap_content"
-          android:layout_marginTop="4dp"
-          android:text="Starting From: First Selected Site"
-          android:textAppearance="?attr/textAppearanceCaption"
-          android:textStyle="italic" />
-
-      <!-- Action Buttons -->
+      <!-- Optimization Action Buttons -->
       <LinearLayout
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
@@ -88,7 +154,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginEnd="4dp"
-            android:text="Optimize Route" />
+            android:text="Arrange / Optimize" />
 
         <Button
             android:id="@+id/btn_navigate_next"
@@ -97,7 +163,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="4dp"
-            android:text="Navigate Next" />
+            android:text="Next Stop" />
 
       </LinearLayout>
 
@@ -105,35 +171,127 @@
 
   </com.google.android.material.card.MaterialCardView>
 
-  <!-- Stops List -->
-  <androidx.recyclerview.widget.RecyclerView
-      android:id="@+id/rv_stops"
+  <!-- Stops List & Return Card -->
+  <LinearLayout
       android:layout_width="match_parent"
       android:layout_height="0dp"
       android:layout_weight="1"
-      android:clipToPadding="false"
-      android:paddingBottom="8dp" />
+      android:orientation="vertical">
 
-  <!-- Empty State -->
-  <TextView
-      android:id="@+id/tv_empty_plan"
-      android:layout_width="match_parent"
-      android:layout_height="0dp"
-      android:layout_weight="1"
-      android:gravity="center"
-      android:padding="24dp"
-      android:text="No sites added to today's visit plan yet.\n\nUse Telecom Search or Map Markers to add sites to your itinerary."
-      android:textAppearance="?attr/textAppearanceBody1"
-      android:textColor="?android:attr/textColorSecondary"
-      android:visibility="gone" />
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_stops"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="4dp" />
 
-  <!-- Bottom Clear Bar -->
-  <Button
-      android:id="@+id/btn_clear_plan"
-      style="@style/Widget.MaterialComponents.Button.TextButton"
+    <!-- Return Stop Card (Visible when round trip is toggled) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/card_return_stop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="4dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="2dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="?attr/colorAccent"
+        android:visibility="gone">
+
+      <LinearLayout
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="horizontal"
+          android:gravity="center_vertical"
+          android:padding="12dp">
+
+        <TextView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:text="R"
+            android:textStyle="bold"
+            android:textColor="@android:color/white"
+            android:background="@drawable/bg_search_radius"
+            android:backgroundTint="@android:color/holo_red_light" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+          <TextView
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Return to Start Point"
+              android:textAppearance="?attr/textAppearanceSubtitle2"
+              android:textStyle="bold" />
+
+          <TextView
+              android:id="@+id/tv_return_destination"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Back to Base"
+              android:textAppearance="?attr/textAppearanceCaption" />
+
+          <TextView
+              android:id="@+id/tv_return_distance"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginTop="2dp"
+              android:text="Return leg: +0.0 km"
+              android:textAppearance="?attr/textAppearanceCaption"
+              android:textStyle="bold"
+              android:textColor="@android:color/holo_red_dark" />
+
+        </LinearLayout>
+
+      </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/tv_empty_plan"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:padding="24dp"
+        android:text="No sites added to today's visit plan yet.\n\nUse Telecom Search or Map Markers to add sites to your itinerary."
+        android:textAppearance="?attr/textAppearanceBody1"
+        android:textColor="?android:attr/textColorSecondary"
+        android:visibility="gone" />
+
+  </LinearLayout>
+
+  <!-- Bottom Persistent Action Bar -->
+  <LinearLayout
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
-      android:text="Clear Visit Plan"
-      android:textColor="@android:color/holo_red_dark" />
+      android:orientation="vertical"
+      android:paddingHorizontal="8dp"
+      android:paddingBottom="8dp"
+      android:background="?android:attr/windowBackground">
+
+    <Button
+        android:id="@+id/btn_show_route_map"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Show Route in Map"
+        android:textAppearance="?attr/textAppearanceButton"
+        android:paddingVertical="12dp" />
+
+    <Button
+        android:id="@+id/btn_clear_plan"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clear Visit Plan"
+        android:textColor="@android:color/holo_red_dark" />
+
+  </LinearLayout>
 
 </LinearLayout>

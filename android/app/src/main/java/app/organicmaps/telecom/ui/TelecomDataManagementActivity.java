@@ -75,9 +75,9 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
     Button btnLoadDemoData = findViewById(R.id.btn_load_demo_data);
     Button btnExportCsv = findViewById(R.id.btn_export_csv);
 
-    mSwitchMapLayer.setChecked(TelecomMapLayerManager.getInstance().isLayerVisible());
+    mSwitchMapLayer.setChecked(TelecomMapLayerManager.getInstance().isLayerVisible(this));
     mSwitchMapLayer.setOnCheckedChangeListener((buttonView, isChecked) -> {
-      TelecomMapLayerManager.getInstance().setLayerVisible(isChecked);
+      TelecomMapLayerManager.getInstance().setLayerVisible(this, isChecked);
       Toast.makeText(this, isChecked ? "Telecom map layer enabled" : "Telecom map layer hidden", Toast.LENGTH_SHORT).show();
     });
 

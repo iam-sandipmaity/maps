@@ -22,16 +22,29 @@ import java.util.List;
 public class TelecomMapLayerManager {
 
   public static final String CATEGORY_NAME = "Telecom Sites";
+  public static final String CATEGORY_ROUTE_NAME = "Planned Visit Route";
+  private static final String PREFS_NAME = "telecom_prefs";
+  private static final String KEY_LAYER_VISIBLE = "telecom_layer_visible";
 
   private static TelecomMapLayerManager sInstance;
-  private boolean mIsLayerVisibleMemory = true;
+  private boolean mIsLayerVisibleMemory = false; // Disabled by default
   private long mCategoryIdMemory = -1L;
+  private long mRouteCategoryIdMemory = -1L;
 
   public static synchronized TelecomMapLayerManager getInstance() {
     if (sInstance == null) {
       sInstance = new TelecomMapLayerManager();
     }
     return sInstance;
+  }
+
+  public boolean isLayerVisible(@NonNull Context context) {
+    long catId = getTelecomCategoryId();
+    if (catId != -1) {
+      return BookmarkManager.INSTANCE.isVisible(catId);
+    }
+    return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getBoolean(KEY_LAYER_VISIBLE, false); // Default disabled
   }
 
   public boolean isLayerVisible() {
@@ -42,6 +55,18 @@ public class TelecomMapLayerManager {
     return mIsLayerVisibleMemory;
   }
 
+  public void setLayerVisible(@NonNull Context context, boolean visible) {
+    mIsLayerVisibleMemory = visible;
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(KEY_LAYER_VISIBLE, visible)
+        .apply();
+    long catId = getTelecomCategoryId();
+    if (catId != -1) {
+      BookmarkManager.INSTANCE.setVisibility(catId, visible);
+    }
+  }
+
   public void setLayerVisible(boolean visible) {
     mIsLayerVisibleMemory = visible;
     long catId = getTelecomCategoryId();
@@ -50,8 +75,8 @@ public class TelecomMapLayerManager {
     }
   }
 
-  public void toggleLayer() {
-    setLayerVisible(!isLayerVisible());
+  public void toggleLayer(@NonNull Context context) {
+    setLayerVisible(context, !isLayerVisible(context));
   }
 
   /**
@@ -68,6 +93,26 @@ public class TelecomMapLayerManager {
     for (BookmarkCategory cat : BookmarkManager.INSTANCE.getCategories()) {
       if (CATEGORY_NAME.equalsIgnoreCase(cat.getName())) {
         mCategoryIdMemory = cat.getId();
+        return cat.getId();
+      }
+    }
+    return -1L;
+  }
+
+  /**
+   * Finds the existing BookmarkCategory for Planned Visit Route, or returns -1 if not found.
+   */
+  public long getRouteCategoryId() {
+    if (mRouteCategoryIdMemory != -1) {
+      for (BookmarkCategory cat : BookmarkManager.INSTANCE.getCategories()) {
+        if (cat.getId() == mRouteCategoryIdMemory) {
+          return mRouteCategoryIdMemory;
+        }
+      }
+    }
+    for (BookmarkCategory cat : BookmarkManager.INSTANCE.getCategories()) {
+      if (CATEGORY_ROUTE_NAME.equalsIgnoreCase(cat.getName())) {
+        mRouteCategoryIdMemory = cat.getId();
         return cat.getId();
       }
     }
@@ -101,12 +146,44 @@ public class TelecomMapLayerManager {
       // Load into CoMaps native Drape engine
       BookmarkManager.INSTANCE.loadBookmarksFile(kmlFile.getAbsolutePath(), false);
 
-      // Restore layer visibility state
+      // Restore layer visibility state from persistent prefs (default false)
+      boolean shouldBeVisible = isLayerVisible(context);
       long newCatId = getTelecomCategoryId();
       if (newCatId != -1) {
-        BookmarkManager.INSTANCE.setVisibility(newCatId, mIsLayerVisibleMemory);
+        BookmarkManager.INSTANCE.setVisibility(newCatId, shouldBeVisible);
       }
 
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  /**
+   * Syncs ordered visit plan stops as a highlighted route layer on the map with numbered pins.
+   */
+  public synchronized boolean syncRouteToMap(@NonNull Context context,
+                                             double startLat,
+                                             double startLon,
+                                             @NonNull String startLabel,
+                                             @NonNull List<TelecomSite> stops,
+                                             boolean returnToStart) {
+    try {
+      long oldRouteCatId = getRouteCategoryId();
+      if (oldRouteCatId != -1) {
+        BookmarkManager.INSTANCE.deleteCategory(oldRouteCatId);
+        mRouteCategoryIdMemory = -1L;
+      }
+
+      File cacheDir = context.getCacheDir();
+      File routeKmlFile = new File(cacheDir, "telecom_visit_route.kml");
+      generateRouteKml(startLat, startLon, startLabel, stops, returnToStart, routeKmlFile);
+
+      BookmarkManager.INSTANCE.loadBookmarksFile(routeKmlFile.getAbsolutePath(), false);
+      long newRouteCatId = getRouteCategoryId();
+      if (newRouteCatId != -1) {
+        BookmarkManager.INSTANCE.setVisibility(newRouteCatId, true);
+      }
       return true;
     } catch (Exception e) {
       return false;
@@ -120,10 +197,20 @@ public class TelecomMapLayerManager {
       writer.write("  <Document>\n");
       writer.write("    <name>" + escapeXml(CATEGORY_NAME) + "</name>\n");
 
+      // Define default placemark style (Blue mark for telecom towers)
+      writer.write("    <Style id=\"placemark-blue\">\n");
+      writer.write("      <IconStyle>\n");
+      writer.write("        <Icon>\n");
+      writer.write("          <href>https://comaps.at/placemarks/placemark-blue.png</href>\n");
+      writer.write("        </Icon>\n");
+      writer.write("      </IconStyle>\n");
+      writer.write("    </Style>\n");
+
       for (TelecomSite site : sites) {
         if (!site.hasValidCoords()) continue;
         writer.write("    <Placemark>\n");
         writer.write("      <name>" + escapeXml(site.getSiteId()) + "</name>\n");
+        writer.write("      <styleUrl>#placemark-blue</styleUrl>\n");
 
         StringBuilder desc = new StringBuilder();
         if (!site.getSiteName().isEmpty()) {
@@ -150,6 +237,73 @@ public class TelecomMapLayerManager {
         writer.write("      <Point>\n");
         writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n",
             site.getLongitude(), site.getLatitude()));
+        writer.write("      </Point>\n");
+        writer.write("    </Placemark>\n");
+      }
+
+      writer.write("  </Document>\n");
+      writer.write("</kml>\n");
+      writer.flush();
+    }
+  }
+
+  private void generateRouteKml(double startLat,
+                                double startLon,
+                                @NonNull String startLabel,
+                                @NonNull List<TelecomSite> stops,
+                                boolean returnToStart,
+                                File file) throws Exception {
+    try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+      writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+      writer.write("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n");
+      writer.write("  <Document>\n");
+      writer.write("    <name>" + escapeXml(CATEGORY_ROUTE_NAME) + "</name>\n");
+
+      writer.write("    <Style id=\"placemark-green\">\n");
+      writer.write("      <IconStyle><Icon><href>https://comaps.at/placemarks/placemark-green.png</href></Icon></IconStyle>\n");
+      writer.write("    </Style>\n");
+      writer.write("    <Style id=\"placemark-orange\">\n");
+      writer.write("      <IconStyle><Icon><href>https://comaps.at/placemarks/placemark-orange.png</href></Icon></IconStyle>\n");
+      writer.write("    </Style>\n");
+      writer.write("    <Style id=\"placemark-red\">\n");
+      writer.write("      <IconStyle><Icon><href>https://comaps.at/placemarks/placemark-red.png</href></Icon></IconStyle>\n");
+      writer.write("    </Style>\n");
+
+      int stepNum = 1;
+      // Start location
+      if (startLat != 0.0 || startLon != 0.0) {
+        writer.write("    <Placemark>\n");
+        writer.write("      <name>" + escapeXml("[" + stepNum + "] Start: " + startLabel) + "</name>\n");
+        writer.write("      <styleUrl>#placemark-green</styleUrl>\n");
+        writer.write("      <Point>\n");
+        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", startLon, startLat));
+        writer.write("      </Point>\n");
+        writer.write("    </Placemark>\n");
+        stepNum++;
+      }
+
+      // Intermediate stops
+      for (int i = 0; i < stops.size(); i++) {
+        TelecomSite s = stops.get(i);
+        if (!s.hasValidCoords()) continue;
+        writer.write("    <Placemark>\n");
+        writer.write("      <name>" + escapeXml("[" + stepNum + "] " + s.getSiteId() + (!s.getSiteName().isEmpty() ? " - " + s.getSiteName() : "")) + "</name>\n");
+        writer.write("      <styleUrl>#placemark-orange</styleUrl>\n");
+        writer.write("      <description>" + escapeXml("Stop #" + (i + 1) + "\nTech: " + s.getTechnicianName() + " (" + s.getTechnicianPhone() + ")") + "</description>\n");
+        writer.write("      <Point>\n");
+        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", s.getLongitude(), s.getLatitude()));
+        writer.write("      </Point>\n");
+        writer.write("    </Placemark>\n");
+        stepNum++;
+      }
+
+      // Return leg
+      if (returnToStart && (startLat != 0.0 || startLon != 0.0)) {
+        writer.write("    <Placemark>\n");
+        writer.write("      <name>" + escapeXml("[" + stepNum + "] Return: " + startLabel) + "</name>\n");
+        writer.write("      <styleUrl>#placemark-red</styleUrl>\n");
+        writer.write("      <Point>\n");
+        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", startLon, startLat));
         writer.write("      </Point>\n");
         writer.write("    </Placemark>\n");
       }
