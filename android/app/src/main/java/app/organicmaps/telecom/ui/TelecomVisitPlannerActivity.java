@@ -376,7 +376,8 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
             ExternalNavigationHelper.openMultiStopInGoogleMaps(this, startLat, startLon, sites,
                 hasReturn, returnLat, returnLon);
           } else {
-            ExternalNavigationHelper.openMultiStopInMappls(this, sites);
+            ExternalNavigationHelper.openMultiStopInMappls(this, startLat, startLon, sites,
+                hasReturn, returnLat, returnLon);
           }
         })
         .show();

@@ -478,26 +478,121 @@ public class ExternalNavigationHelper {
   }
 
   /**
-   * Navigates the first/next stop in the visit plan using Mappls.
+   * Opens complete multi-stop visit plan route in Mappls with start location, intermediate stops, and optional return.
    */
-  public static void openMultiStopInMappls(@NonNull Context context, @NonNull List<TelecomSite> stops) {
+  public static void openMultiStopInMappls(@NonNull Context context,
+                                           double startLat,
+                                           double startLon,
+                                           @NonNull List<TelecomSite> stops,
+                                           boolean hasReturn,
+                                           double returnLat,
+                                           double returnLon) {
     if (stops.isEmpty()) {
       showToast(context, "No stops in visit plan");
       return;
     }
-    TelecomSite nextStop = null;
+
+    List<String> places = new ArrayList<>();
+
+    // 1. Origin / Start Point
+    if (startLat != 0.0 || startLon != 0.0) {
+      places.add(String.format(Locale.US, "%.6f,%.6f,Start", startLat, startLon));
+    }
+
+    // 2. All intermediate stops in visit order
     for (TelecomSite s : stops) {
       if (s.hasValidCoords()) {
-        nextStop = s;
-        break;
+        String label = s.getSiteId().isEmpty() ? "Site" : Uri.encode(s.getSiteId());
+        places.add(String.format(Locale.US, "%.6f,%.6f,%s", s.getLatitude(), s.getLongitude(), label));
       }
     }
-    if (nextStop != null) {
-      showToast(context, "Launching navigation to " + nextStop.getSiteId() + " in Mappls");
-      openInMappls(context, nextStop.getLatitude(), nextStop.getLongitude(), nextStop.getSiteId());
-    } else {
-      showToast(context, "No stops with valid coordinates");
+
+    // 3. Return Destination
+    if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
+      places.add(String.format(Locale.US, "%.6f,%.6f,Return", returnLat, returnLon));
     }
+
+    if (places.isEmpty()) {
+      showToast(context, "No stops with valid coordinates");
+      return;
+    }
+
+    // If only one location, launch single stop navigation
+    if (places.size() == 1) {
+      TelecomSite first = stops.get(0);
+      if (first.hasValidCoords()) {
+        openInMappls(context, first.getLatitude(), first.getLongitude(), first.getSiteId());
+      }
+      return;
+    }
+
+    // Semicolon-delimited waypoints: place1;place2;place3;...
+    StringBuilder placesParam = new StringBuilder();
+    for (int i = 0; i < places.size(); i++) {
+      if (i > 0) {
+        placesParam.append(";");
+      }
+      placesParam.append(places.get(i));
+    }
+
+    String placesStr = placesParam.toString();
+    Uri dirUri = Uri.parse("mappls://direction?places=" + placesStr);
+    Uri navUri = Uri.parse("mappls://navigation?places=" + placesStr + "&isNav=true&mode=driving");
+
+    // 1. Try generic mappls://direction deep link
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, dirUri);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(intent);
+      return;
+    } catch (Exception ignored) {}
+
+    // 2. Try generic mappls://navigation deep link with waypoints
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, navUri);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(intent);
+      return;
+    } catch (Exception ignored) {}
+
+    // 3. Try with known Mappls packages directly
+    String[] mapplsPackages = new String[] { "com.mapmyindia.b2c", "com.mmi.maps", "com.mapmyindia.move" };
+    for (String pkg : mapplsPackages) {
+      try {
+        Intent intent = new Intent(Intent.ACTION_VIEW, dirUri);
+        intent.setPackage(pkg);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+        return;
+      } catch (Exception ignored) {}
+    }
+
+    // 4. Fallback: Open web direction widget
+    try {
+      StringBuilder webCoords = new StringBuilder();
+      for (int i = 0; i < places.size(); i++) {
+        if (i > 0) webCoords.append(";");
+        String[] parts = places.get(i).split(",");
+        if (parts.length >= 2) {
+          webCoords.append(parts[0]).append(",").append(parts[1]);
+        }
+      }
+      String webUri = "https://mappls.com/direction?places=" + webCoords.toString();
+      Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(webUri));
+      webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(webIntent);
+      return;
+    } catch (Exception ignored) {}
+
+    // 5. Final fallback: open first stop
+    TelecomSite first = stops.get(0);
+    if (first.hasValidCoords()) {
+      openInMappls(context, first.getLatitude(), first.getLongitude(), first.getSiteId());
+    }
+  }
+
+  public static void openMultiStopInMappls(@NonNull Context context, @NonNull List<TelecomSite> stops) {
+    openMultiStopInMappls(context, 0.0, 0.0, stops, false, 0.0, 0.0);
   }
 
   private static void showToast(@NonNull Context context, String message) {
