@@ -323,6 +323,34 @@ public class TelecomMapLayerManager {
         writer.write("    </Placemark>\n");
       }
 
+      // Connecting route polyline (LineString track)
+      writer.write("    <Style id=\"route-track\">\n");
+      writer.write("      <LineStyle>\n");
+      writer.write("        <color>ff1e88e5</color>\n");
+      writer.write("        <width>5</width>\n");
+      writer.write("      </LineStyle>\n");
+      writer.write("    </Style>\n");
+      writer.write("    <Placemark>\n");
+      writer.write("      <name>Planned Route Path</name>\n");
+      writer.write("      <styleUrl>#route-track</styleUrl>\n");
+      writer.write("      <LineString>\n");
+      writer.write("        <tessellate>1</tessellate>\n");
+      writer.write("        <coordinates>\n");
+      if (startLat != 0.0 || startLon != 0.0) {
+        writer.write(String.format(java.util.Locale.US, "          %.6f,%.6f,0\n", startLon, startLat));
+      }
+      for (TelecomSite s : stops) {
+        if (s.hasValidCoords()) {
+          writer.write(String.format(java.util.Locale.US, "          %.6f,%.6f,0\n", s.getLongitude(), s.getLatitude()));
+        }
+      }
+      if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
+        writer.write(String.format(java.util.Locale.US, "          %.6f,%.6f,0\n", returnLon, returnLat));
+      }
+      writer.write("        </coordinates>\n");
+      writer.write("      </LineString>\n");
+      writer.write("    </Placemark>\n");
+
       writer.write("  </Document>\n");
       writer.write("</kml>\n");
       writer.flush();

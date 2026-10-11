@@ -364,7 +364,7 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
     CharSequence[] options = {
         "CoMaps (Offline Map & Route Pins)",
         "Google Maps (Multi-Stop Itinerary)",
-        "Mappls by MapmyIndia (Turn-by-Turn Nav)"
+        "Mappls by MapmyIndia (Next Stop Nav)"
     };
     new AlertDialog.Builder(this)
         .setTitle("Show Route in Map")
@@ -435,11 +435,27 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
       });
 
       holder.btnNav.setOnClickListener(v -> {
-        if (site.hasValidCoords()) {
-          ExternalNavigationHelper.openInGoogleMaps(TelecomVisitPlannerActivity.this, site, true);
-        } else {
-          ExternalNavigationHelper.openInCoMaps(TelecomVisitPlannerActivity.this, site);
+        if (!site.hasValidCoords()) {
+          Toast.makeText(TelecomVisitPlannerActivity.this, "Site has no valid coordinates", Toast.LENGTH_SHORT).show();
+          return;
         }
+        String[] navOptions = new String[] {
+            "CoMaps (Test Offline Road Route)",
+            "Google Maps (Turn-by-Turn)",
+            "Mappls by MapmyIndia"
+        };
+        new AlertDialog.Builder(TelecomVisitPlannerActivity.this)
+            .setTitle("Navigate to " + site.getSiteId())
+            .setItems(navOptions, (dialog, which) -> {
+              if (which == 0) {
+                ExternalNavigationHelper.navigateInCoMaps(TelecomVisitPlannerActivity.this, site);
+              } else if (which == 1) {
+                ExternalNavigationHelper.openInGoogleMaps(TelecomVisitPlannerActivity.this, site, true);
+              } else {
+                ExternalNavigationHelper.openInMappls(TelecomVisitPlannerActivity.this, site);
+              }
+            })
+            .show();
       });
 
       holder.btnRemove.setOnClickListener(v -> {

@@ -126,6 +126,40 @@ public class ExternalNavigationHelper {
   }
 
   /**
+   * Prepares and starts turn-by-turn road navigation directly to a single site in CoMaps from user's location.
+   * Useful to test if the site is reachable via OpenStreetMap road snapping or if it is off-road.
+   */
+  public static void navigateInCoMaps(@NonNull Context context, @NonNull TelecomSite site) {
+    if (!site.hasValidCoords()) {
+      showToast(context, "Site has no valid coordinates to navigate");
+      return;
+    }
+    try {
+      RoutingController.get().cancel();
+      Framework.nativeCloseRouting();
+      Framework.nativeRemoveRoutePoints();
+
+      MapObject endPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, site.getSiteId(), "", site.getLatitude(), site.getLongitude());
+      Framework.addRoutePoint(new RouteMarkData(endPoint.getTitle(), endPoint.getSubtitle(),
+          RouteMarkType.Finish, 0, true, false, false, site.getLatitude(), site.getLongitude()));
+
+      MapObject gpsPos = MwmApplication.from(context).getLocationHelper().getMyPosition();
+      if (gpsPos != null) {
+        Framework.addRoutePoint(new RouteMarkData(gpsPos.getTitle(), gpsPos.getSubtitle(),
+            RouteMarkType.Start, 0, false, true, false, gpsPos.getLat(), gpsPos.getLon()));
+      }
+
+      RoutingController.get().launchPlanning();
+
+      Intent intent = new Intent(context, MwmActivity.class);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      context.startActivity(intent);
+    } catch (Exception e) {
+      openInCoMaps(context, site);
+    }
+  }
+
+  /**
    * Launches navigation or map view in Google Maps.
    * Uses turn-by-turn navigation intent first, falls back to geo: or browser.
    */
@@ -287,7 +321,11 @@ public class ExternalNavigationHelper {
 
       MapObject endPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, destLabel, "", destLat, destLon);
 
-      // Clean existing route marks to avoid race condition
+      // Clean existing route marks and cancel previous routing state to prevent stuck errors
+      try {
+        RoutingController.get().cancel();
+        Framework.nativeCloseRouting();
+      } catch (Exception ignored) {}
       Framework.nativeRemoveRoutePoints();
 
       // Batch pattern: 1st add destination, 2nd add start, 3rd add intermediates without reordering
