@@ -6,6 +6,7 @@ import app.organicmaps.sdk.bookmarks.data.BookmarkCategory;
 import app.organicmaps.sdk.bookmarks.data.BookmarkManager;
 import app.organicmaps.telecom.db.TelecomDatabaseHelper;
 import app.organicmaps.telecom.model.TelecomSite;
+import app.organicmaps.telecom.navigation.TelecomRoadSnapper;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -280,9 +281,22 @@ public class TelecomMapLayerManager {
       writer.write("    <Style id=\"placemark-orange\">\n");
       writer.write("      <IconStyle><Icon><href>https://comaps.at/placemarks/placemark-orange.png</href></Icon></IconStyle>\n");
       writer.write("    </Style>\n");
+      writer.write("    <Style id=\"placemark-blue\">\n");
+      writer.write("      <IconStyle><Icon><href>https://comaps.at/placemarks/placemark-blue.png</href></Icon></IconStyle>\n");
+      writer.write("    </Style>\n");
       writer.write("    <Style id=\"placemark-red\">\n");
       writer.write("      <IconStyle><Icon><href>https://comaps.at/placemarks/placemark-red.png</href></Icon></IconStyle>\n");
       writer.write("    </Style>\n");
+      writer.write("    <Style id=\"approach-track\">\n");
+      writer.write("      <LineStyle>\n");
+      writer.write("        <color>ff008cff</color>\n"); // Amber / Orange off-road line
+      writer.write("        <width>4</width>\n");
+      writer.write("      </LineStyle>\n");
+      writer.write("    </Style>\n");
+
+      // Calculate BRouter / GraphHopper style road corridor projections
+      List<TelecomRoadSnapper.SnappedWaypoint> snappedWaypoints =
+          TelecomRoadSnapper.snapVisitPlan(startLat, startLon, stops, hasReturn, returnLat, returnLon);
 
       int stepNum = 1;
       // Start location
@@ -297,18 +311,53 @@ public class TelecomMapLayerManager {
         stepNum++;
       }
 
-      // Intermediate stops
-      for (int i = 0; i < stops.size(); i++) {
-        TelecomSite s = stops.get(i);
+      // Intermediate stops & off-road approach tracks
+      for (int i = 0; i < snappedWaypoints.size(); i++) {
+        TelecomRoadSnapper.SnappedWaypoint wp = snappedWaypoints.get(i);
+        TelecomSite s = wp.getSite();
         if (!s.hasValidCoords()) continue;
+
+        String description = "Stop #" + (i + 1) + "\nTech: " + s.getTechnicianName() + " (" + s.getTechnicianPhone() + ")";
+        if (wp.isOffRoad()) {
+          description += "\nOff-Road: " + wp.getApproachSummary() + " from main road";
+        }
+
+        // Primary placemark at actual tower location
         writer.write("    <Placemark>\n");
         writer.write("      <name>" + escapeXml("[" + stepNum + "] " + s.getSiteId() + (!s.getSiteName().isEmpty() ? " - " + s.getSiteName() : "")) + "</name>\n");
         writer.write("      <styleUrl>#placemark-orange</styleUrl>\n");
-        writer.write("      <description>" + escapeXml("Stop #" + (i + 1) + "\nTech: " + s.getTechnicianName() + " (" + s.getTechnicianPhone() + ")") + "</description>\n");
+        writer.write("      <description>" + escapeXml(description) + "</description>\n");
         writer.write("      <Point>\n");
-        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", s.getLongitude(), s.getLatitude()));
+        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", wp.getOriginalLon(), wp.getOriginalLat()));
         writer.write("      </Point>\n");
         writer.write("    </Placemark>\n");
+
+        // If site is off-road, also render road access waypoint and last-mile approach connector line
+        if (wp.isOffRoad()) {
+          // 1. Road Access Point Pin
+          writer.write("    <Placemark>\n");
+          writer.write("      <name>" + escapeXml("[" + stepNum + "-Road] Access for " + s.getSiteId() + " (" + wp.getApproachSummary() + ")") + "</name>\n");
+          writer.write("      <styleUrl>#placemark-blue</styleUrl>\n");
+          writer.write("      <description>" + escapeXml("Pull over here on the road. Tower " + s.getSiteId() + " is " + wp.getApproachSummary() + " across field/track.") + "</description>\n");
+          writer.write("      <Point>\n");
+          writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", wp.getRoadLon(), wp.getRoadLat()));
+          writer.write("      </Point>\n");
+          writer.write("    </Placemark>\n");
+
+          // 2. Approach Track line connecting road to tower
+          writer.write("    <Placemark>\n");
+          writer.write("      <name>" + escapeXml("Approach to " + s.getSiteId() + " (" + wp.getApproachSummary() + ")") + "</name>\n");
+          writer.write("      <styleUrl>#approach-track</styleUrl>\n");
+          writer.write("      <LineString>\n");
+          writer.write("        <tessellate>1</tessellate>\n");
+          writer.write("        <coordinates>\n");
+          writer.write(String.format(java.util.Locale.US, "          %.6f,%.6f,0\n", wp.getRoadLon(), wp.getRoadLat()));
+          writer.write(String.format(java.util.Locale.US, "          %.6f,%.6f,0\n", wp.getOriginalLon(), wp.getOriginalLat()));
+          writer.write("        </coordinates>\n");
+          writer.write("      </LineString>\n");
+          writer.write("    </Placemark>\n");
+        }
+
         stepNum++;
       }
 
