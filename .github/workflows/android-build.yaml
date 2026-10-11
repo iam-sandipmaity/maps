@@ -24,9 +24,10 @@ on:
       arch:
         description: 'Target Architecture'
         required: true
-        default: 'arm64'
+        default: 'universal'
         type: choice
         options:
+          - universal
           - arm64
           - arm32
 
@@ -101,9 +102,14 @@ jobs:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           FLAVOR="${{ inputs.flavor || 'FdroidDebug' }}"
-          ARCH="${{ inputs.arch || 'arm64' }}"
-          echo "Building flavor: assemble${FLAVOR} for arch: -P${ARCH}"
-          ./gradlew -P${ARCH} "assemble${FLAVOR}"
+          ARCH="${{ inputs.arch || 'universal' }}"
+          if [ "$ARCH" = "universal" ]; then
+            echo "Building universal APK: assemble${FLAVOR} (supports all devices)"
+            ./gradlew "assemble${FLAVOR}"
+          else
+            echo "Building flavor: assemble${FLAVOR} for arch: -P${ARCH}"
+            ./gradlew -P${ARCH} "assemble${FLAVOR}"
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
