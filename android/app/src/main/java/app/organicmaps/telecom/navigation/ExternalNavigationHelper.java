@@ -320,9 +320,6 @@ public class ExternalNavigationHelper {
       for (int i = startIndex; i < endIndex; i++) {
         TelecomSite s = stops.get(i);
         if (s.hasValidCoords()) {
-          if (intermediateIndex >= 4) {
-            break;
-          }
           Framework.addRoutePoint(new RouteMarkData(s.getSiteId(), s.getSiteName(),
               RouteMarkType.Intermediate, intermediateIndex, true, false, false, s.getLatitude(), s.getLongitude()), false);
           intermediateIndex++;
@@ -426,6 +423,7 @@ public class ExternalNavigationHelper {
 
   /**
    * Opens turn-by-turn navigation directly in Mappls (MapmyIndia) app or web fallback.
+   * Checks both official Google Play package (com.mapmyindia.b2c) and OEM package (com.mmi.maps).
    */
   public static void openInMappls(@NonNull Context context, double lat, double lon, @NonNull String destinationName) {
     if (lat == 0.0 && lon == 0.0) {
@@ -435,28 +433,56 @@ public class ExternalNavigationHelper {
 
     String encodedName = Uri.encode(destinationName);
     String mapplsUri = String.format(Locale.US, "mappls://navigation?places=%.6f,%.6f,%s&isNav=true&mode=driving", lat, lon, encodedName);
-    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(mapplsUri));
-    intent.setPackage("com.mmi.maps");
-    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    Uri parsedMapplsUri = Uri.parse(mapplsUri);
 
-    if (isIntentResolvable(context, intent)) {
+    // List of known Mappls Android package names (Play Store is com.mapmyindia.b2c)
+    String[] mapplsPackages = new String[] { "com.mapmyindia.b2c", "com.mmi.maps" };
+
+    // 1. Try launching directly with Mappls packages via deep link or geo URI
+    for (String pkg : mapplsPackages) {
+      try {
+        Intent intent = new Intent(Intent.ACTION_VIEW, parsedMapplsUri);
+        intent.setPackage(pkg);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+        return;
+      } catch (Exception ignored) {
+        // Fallback to geo intent directed at this package
+        try {
+          Uri geoUri = Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?q=%.6f,%.6f(%s)", lat, lon, lat, lon, encodedName));
+          Intent geoIntent = new Intent(Intent.ACTION_VIEW, geoUri);
+          geoIntent.setPackage(pkg);
+          geoIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          context.startActivity(geoIntent);
+          return;
+        } catch (Exception ignored2) {}
+      }
+    }
+
+    // 2. Try generic mappls:// URI without package restriction
+    try {
+      Intent intent = new Intent(Intent.ACTION_VIEW, parsedMapplsUri);
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       context.startActivity(intent);
-    } else {
-      // Fallback: Web or Play Store
+      return;
+    } catch (Exception ignored) {}
+
+    // 3. Fallback: Open in web browser
+    try {
       String webUri = String.format(Locale.US, "https://mappls.com/navigation?places=%.6f,%.6f,%s&isNav=true&mode=driving", lat, lon, encodedName);
       Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(webUri));
       webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-      if (isIntentResolvable(context, webIntent)) {
-        context.startActivity(webIntent);
-      } else {
-        try {
-          Intent marketIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.mmi.maps"));
-          marketIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-          context.startActivity(marketIntent);
-        } catch (Exception e) {
-          showToast(context, "Mappls (MapmyIndia) is not installed");
-        }
-      }
+      context.startActivity(webIntent);
+      return;
+    } catch (Exception ignored) {}
+
+    // 4. Fallback: Google Play Store with official package com.mapmyindia.b2c
+    try {
+      Intent marketIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.mapmyindia.b2c"));
+      marketIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(marketIntent);
+    } catch (Exception e) {
+      showToast(context, "Mappls (MapmyIndia) is not installed");
     }
   }
 
