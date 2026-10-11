@@ -1,0 +1,79 @@
+name: Upstream Codeberg Sync
+
+on:
+  schedule:
+    # Runs every 7 days (every Sunday at 00:00 UTC)
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      upstream_branch:
+        description: 'Upstream branch from Codeberg (default: main)'
+        required: true
+        default: 'main'
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync with Upstream Codeberg
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git User
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add Upstream Codeberg Remote and Fetch
+        run: |
+          git remote add upstream https://codeberg.org/comaps/comaps.git || git remote set-url upstream https://codeberg.org/comaps/comaps.git
+          git fetch upstream ${{ inputs.upstream_branch || 'main' }}
+
+      - name: Check for new commits
+        id: check_commits
+        run: |
+          UPSTREAM_BRANCH="${{ inputs.upstream_branch || 'main' }}"
+          BEHIND_COUNT=$(git rev-list --count HEAD..upstream/$UPSTREAM_BRANCH)
+          echo "behind_count=$BEHIND_COUNT" >> $GITHUB_OUTPUT
+          if [ "$BEHIND_COUNT" -eq 0 ]; then
+            echo "Already up-to-date with upstream/$UPSTREAM_BRANCH. No new commits to merge."
+          else
+            echo "Behind by $BEHIND_COUNT commit(s). Proceeding to merge."
+          fi
+
+      - name: Merge Upstream Changes
+        if: steps.check_commits.outputs.behind_count > 0
+        id: merge
+        run: |
+          UPSTREAM_BRANCH="${{ inputs.upstream_branch || 'main' }}"
+          echo "Merging upstream/$UPSTREAM_BRANCH into main..."
+          if git merge upstream/$UPSTREAM_BRANCH -m "chore(sync): automated 7-day upstream sync from codeberg.org/comaps/comaps ($UPSTREAM_BRANCH)"; then
+            echo "clean_merge=true" >> $GITHUB_OUTPUT
+            git push origin main
+            echo "Successfully merged and pushed upstream commits to origin/main."
+          else
+            echo "clean_merge=false" >> $GITHUB_OUTPUT
+            echo "Merge conflict encountered. Aborting merge safely."
+            git merge --abort
+            exit 1
+          fi
+
+      - name: Report Sync Status
+        if: success() && steps.check_commits.outputs.behind_count > 0
+        run: |
+          echo "::notice::Successfully synced ${{ steps.check_commits.outputs.behind_count }} commit(s) from Codeberg upstream!"
+
+      - name: Report Failure / Conflict
+        if: failure() && steps.check_commits.outputs.behind_count > 0
+        run: |
+          echo "::error::Upstream sync encountered a conflict that requires manual inspection. No files on 'main' were modified."
