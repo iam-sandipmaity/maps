@@ -381,14 +381,14 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
   }
 
   /**
-   * Fast offline search by Site ID, partial Site ID, site name, JC location, technician, or remarks.
+   * Fast offline search by Site ID, partial Site ID, site name, JC location, technician, or remarks with pagination.
    */
   @NonNull
-  public List<TelecomSite> searchSites(@NonNull String query, int limit) {
+  public List<TelecomSite> searchSites(@NonNull String query, int limit, int offset) {
     List<TelecomSite> results = new ArrayList<>();
     String q = query.trim();
     if (q.isEmpty()) {
-      return getAllSites(limit > 0 ? limit : 50);
+      return getAllSites(limit > 0 ? limit : 50, offset);
     }
 
     SQLiteDatabase db = getReadableDatabase();
@@ -396,28 +396,35 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
     String exactQuery = q;
 
     // Search query prioritizing exact or prefix site_id match first, then partial match across fields
-    String sql = "SELECT * FROM " + TABLE_SITES + " WHERE "
-        + COL_SITE_ID + " LIKE ? OR "
-        + COL_SITE_NAME + " LIKE ? OR "
-        + COL_LOCATION + " LIKE ? OR "
-        + COL_TECH_NAME + " LIKE ? OR "
-        + COL_SUPERVISOR_NAME + " LIKE ? OR "
-        + COL_NOTES + " LIKE ? "
-        + " ORDER BY "
-        + "   CASE "
-        + "     WHEN " + COL_SITE_ID + " = ? THEN 1 "
-        + "     WHEN " + COL_SITE_ID + " LIKE ? THEN 2 "
-        + "     WHEN " + COL_SITE_NAME + " LIKE ? THEN 3 "
-        + "     ELSE 4 "
-        + "   END, "
-        + "   " + COL_SITE_ID + " ASC "
-        + (limit > 0 ? " LIMIT " + limit : "");
+    StringBuilder sql = new StringBuilder();
+    sql.append("SELECT * FROM ").append(TABLE_SITES).append(" WHERE ")
+       .append(COL_SITE_ID).append(" LIKE ? OR ")
+       .append(COL_SITE_NAME).append(" LIKE ? OR ")
+       .append(COL_LOCATION).append(" LIKE ? OR ")
+       .append(COL_TECH_NAME).append(" LIKE ? OR ")
+       .append(COL_SUPERVISOR_NAME).append(" LIKE ? OR ")
+       .append(COL_NOTES).append(" LIKE ? ")
+       .append(" ORDER BY ")
+       .append("   CASE ")
+       .append("     WHEN ").append(COL_SITE_ID).append(" = ? THEN 1 ")
+       .append("     WHEN ").append(COL_SITE_ID).append(" LIKE ? THEN 2 ")
+       .append("     WHEN ").append(COL_SITE_NAME).append(" LIKE ? THEN 3 ")
+       .append("     ELSE 4 ")
+       .append("   END, ")
+       .append("   ").append(COL_SITE_ID).append(" ASC ");
+
+    if (limit > 0) {
+      sql.append(" LIMIT ").append(limit);
+      if (offset > 0) {
+        sql.append(" OFFSET ").append(offset);
+      }
+    }
 
     String prefixQuery = q + "%";
     String[] args = new String[]{likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery,
         exactQuery, prefixQuery, prefixQuery};
 
-    Cursor c = db.rawQuery(sql, args);
+    Cursor c = db.rawQuery(sql.toString(), args);
     while (c.moveToNext()) {
       results.add(cursorToSite(c));
     }
@@ -426,12 +433,49 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
   }
 
   @NonNull
-  public List<TelecomSite> getAllSites(int limit) {
+  public List<TelecomSite> searchSites(@NonNull String query, int limit) {
+    return searchSites(query, limit, 0);
+  }
+
+  /**
+   * Returns total count of sites matching a search query.
+   */
+  public int countSites(@NonNull String query) {
+    String q = query.trim();
+    if (q.isEmpty()) {
+      return getSitesCount();
+    }
+    SQLiteDatabase db = getReadableDatabase();
+    String likeQuery = "%" + q + "%";
+    String sql = "SELECT COUNT(*) FROM " + TABLE_SITES + " WHERE "
+        + COL_SITE_ID + " LIKE ? OR "
+        + COL_SITE_NAME + " LIKE ? OR "
+        + COL_LOCATION + " LIKE ? OR "
+        + COL_TECH_NAME + " LIKE ? OR "
+        + COL_SUPERVISOR_NAME + " LIKE ? OR "
+        + COL_NOTES + " LIKE ?";
+    String[] args = new String[]{likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery};
+    Cursor c = db.rawQuery(sql, args);
+    int count = 0;
+    if (c.moveToFirst()) {
+      count = c.getInt(0);
+    }
+    c.close();
+    return count;
+  }
+
+  @NonNull
+  public List<TelecomSite> getAllSites(int limit, int offset) {
     List<TelecomSite> list = new ArrayList<>();
     SQLiteDatabase db = getReadableDatabase();
-    String query = "SELECT * FROM " + TABLE_SITES + " ORDER BY " + COL_SITE_ID + " ASC"
-        + (limit > 0 ? " LIMIT " + limit : "");
-    Cursor c = db.rawQuery(query, null);
+    StringBuilder query = new StringBuilder("SELECT * FROM " + TABLE_SITES + " ORDER BY " + COL_SITE_ID + " ASC");
+    if (limit > 0) {
+      query.append(" LIMIT ").append(limit);
+      if (offset > 0) {
+        query.append(" OFFSET ").append(offset);
+      }
+    }
+    Cursor c = db.rawQuery(query.toString(), null);
     while (c.moveToNext()) {
       list.add(cursorToSite(c));
     }
@@ -440,8 +484,13 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
   }
 
   @NonNull
+  public List<TelecomSite> getAllSites(int limit) {
+    return getAllSites(limit, 0);
+  }
+
+  @NonNull
   public List<TelecomSite> getAllSites() {
-    return getAllSites(-1);
+    return getAllSites(-1, 0);
   }
 
   @NonNull

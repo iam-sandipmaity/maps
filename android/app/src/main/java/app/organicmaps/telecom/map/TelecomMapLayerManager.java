@@ -167,7 +167,10 @@ public class TelecomMapLayerManager {
                                              double startLon,
                                              @NonNull String startLabel,
                                              @NonNull List<TelecomSite> stops,
-                                             boolean returnToStart) {
+                                             boolean hasReturn,
+                                             double returnLat,
+                                             double returnLon,
+                                             @NonNull String returnLabel) {
     try {
       long oldRouteCatId = getRouteCategoryId();
       if (oldRouteCatId != -1) {
@@ -177,7 +180,7 @@ public class TelecomMapLayerManager {
 
       File cacheDir = context.getCacheDir();
       File routeKmlFile = new File(cacheDir, "telecom_visit_route.kml");
-      generateRouteKml(startLat, startLon, startLabel, stops, returnToStart, routeKmlFile);
+      generateRouteKml(startLat, startLon, startLabel, stops, hasReturn, returnLat, returnLon, returnLabel, routeKmlFile);
 
       BookmarkManager.INSTANCE.loadBookmarksFile(routeKmlFile.getAbsolutePath(), false);
       long newRouteCatId = getRouteCategoryId();
@@ -188,6 +191,15 @@ public class TelecomMapLayerManager {
     } catch (Exception e) {
       return false;
     }
+  }
+
+  public synchronized boolean syncRouteToMap(@NonNull Context context,
+                                             double startLat,
+                                             double startLon,
+                                             @NonNull String startLabel,
+                                             @NonNull List<TelecomSite> stops,
+                                             boolean returnToStart) {
+    return syncRouteToMap(context, startLat, startLon, startLabel, stops, returnToStart, startLat, startLon, startLabel);
   }
 
   private void generateKml(List<TelecomSite> sites, File file) throws Exception {
@@ -251,7 +263,10 @@ public class TelecomMapLayerManager {
                                 double startLon,
                                 @NonNull String startLabel,
                                 @NonNull List<TelecomSite> stops,
-                                boolean returnToStart,
+                                boolean hasReturn,
+                                double returnLat,
+                                double returnLon,
+                                @NonNull String returnLabel,
                                 File file) throws Exception {
     try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
       writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -298,12 +313,12 @@ public class TelecomMapLayerManager {
       }
 
       // Return leg
-      if (returnToStart && (startLat != 0.0 || startLon != 0.0)) {
+      if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
         writer.write("    <Placemark>\n");
-        writer.write("      <name>" + escapeXml("[" + stepNum + "] Return: " + startLabel) + "</name>\n");
+        writer.write("      <name>" + escapeXml("[" + stepNum + "] Return: " + returnLabel) + "</name>\n");
         writer.write("      <styleUrl>#placemark-red</styleUrl>\n");
         writer.write("      <Point>\n");
-        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", startLon, startLat));
+        writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", returnLon, returnLat));
         writer.write("      </Point>\n");
         writer.write("    </Placemark>\n");
       }

@@ -300,4 +300,27 @@ public class TelecomSystemTest {
     assertTrue(roundTripTotal > oneWayTotal);
     assertEquals(returnLeg, roundTripTotal - oneWayTotal, 0.0001);
   }
+
+  @Test
+  public void testCustomReturnPlaceDistanceCalculation() {
+    double siteLastLat = 22.4200;
+    double siteLastLon = 87.2000;
+
+    double customReturnLat = 22.5000;
+    double customReturnLon = 87.3500;
+
+    double customReturnLeg = VisitPlannerManager.calculateHaversineDistanceKm(
+        siteLastLat, siteLastLon, customReturnLat, customReturnLon);
+
+    assertTrue(customReturnLeg > 0);
+    // Rough check: ~20 km
+    assertTrue(customReturnLeg > 10.0 && customReturnLeg < 30.0);
+  }
+
+  @Test
+  public void testReturnModeEnum() {
+    assertEquals(VisitPlannerManager.ReturnMode.NONE, VisitPlannerManager.ReturnMode.valueOf("NONE"));
+    assertEquals(VisitPlannerManager.ReturnMode.START_POINT, VisitPlannerManager.ReturnMode.valueOf("START_POINT"));
+    assertEquals(VisitPlannerManager.ReturnMode.CUSTOM_PLACE, VisitPlannerManager.ReturnMode.valueOf("CUSTOM_PLACE"));
+  }
 }

@@ -15,8 +15,18 @@ import java.util.List;
  */
 public class VisitPlannerManager {
 
+  public enum ReturnMode {
+    NONE,
+    START_POINT,
+    CUSTOM_PLACE
+  }
+
   private static final String PREFS_NAME = "telecom_visit_planner_prefs";
   private static final String KEY_RETURN_TO_START = "return_to_start";
+  private static final String KEY_RETURN_MODE = "return_mode";
+  private static final String KEY_RETURN_LAT = "return_lat";
+  private static final String KEY_RETURN_LON = "return_lon";
+  private static final String KEY_RETURN_LABEL = "return_label";
   private static final String KEY_START_LAT = "start_lat";
   private static final String KEY_START_LON = "start_lon";
   private static final String KEY_START_LABEL = "start_label";
@@ -31,7 +41,10 @@ public class VisitPlannerManager {
   private boolean mHasCustomStart = false;
   private boolean mIsGpsStart = false;
   private String mStartLabel = "First Selected Site";
-  private boolean mReturnToStart = false;
+  private ReturnMode mReturnMode = ReturnMode.NONE;
+  private double mReturnLat = 0.0;
+  private double mReturnLon = 0.0;
+  private String mReturnLabel = "Custom Return Base";
 
   public static synchronized VisitPlannerManager getInstance(@NonNull Context context) {
     if (sInstance == null) {
@@ -44,7 +57,21 @@ public class VisitPlannerManager {
 
   private void loadPrefs(@NonNull Context context) {
     android.content.SharedPreferences sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-    mReturnToStart = sp.getBoolean(KEY_RETURN_TO_START, false);
+    String modeStr = sp.getString(KEY_RETURN_MODE, null);
+    if (modeStr != null) {
+      try {
+        mReturnMode = ReturnMode.valueOf(modeStr);
+      } catch (Exception e) {
+        mReturnMode = ReturnMode.NONE;
+      }
+    } else {
+      boolean oldReturn = sp.getBoolean(KEY_RETURN_TO_START, false);
+      mReturnMode = oldReturn ? ReturnMode.START_POINT : ReturnMode.NONE;
+    }
+    mReturnLat = Double.longBitsToDouble(sp.getLong(KEY_RETURN_LAT, Double.doubleToLongBits(0.0)));
+    mReturnLon = Double.longBitsToDouble(sp.getLong(KEY_RETURN_LON, Double.doubleToLongBits(0.0)));
+    mReturnLabel = sp.getString(KEY_RETURN_LABEL, "Custom Return Base");
+
     mHasCustomStart = sp.getBoolean(KEY_HAS_CUSTOM_START, false);
     mIsGpsStart = sp.getBoolean(KEY_IS_GPS_START, false);
     mStartLat = Double.longBitsToDouble(sp.getLong(KEY_START_LAT, Double.doubleToLongBits(0.0)));
@@ -55,7 +82,11 @@ public class VisitPlannerManager {
   public synchronized void savePrefs(@NonNull Context context) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .edit()
-        .putBoolean(KEY_RETURN_TO_START, mReturnToStart)
+        .putString(KEY_RETURN_MODE, mReturnMode.name())
+        .putBoolean(KEY_RETURN_TO_START, mReturnMode == ReturnMode.START_POINT)
+        .putLong(KEY_RETURN_LAT, Double.doubleToLongBits(mReturnLat))
+        .putLong(KEY_RETURN_LON, Double.doubleToLongBits(mReturnLon))
+        .putString(KEY_RETURN_LABEL, mReturnLabel)
         .putBoolean(KEY_HAS_CUSTOM_START, mHasCustomStart)
         .putBoolean(KEY_IS_GPS_START, mIsGpsStart)
         .putLong(KEY_START_LAT, Double.doubleToLongBits(mStartLat))
@@ -145,12 +176,83 @@ public class VisitPlannerManager {
   }
 
   public synchronized boolean isReturnToStart() {
-    return mReturnToStart;
+    return mReturnMode == ReturnMode.START_POINT;
   }
 
   public synchronized void setReturnToStart(boolean returnToStart, @NonNull Context context) {
-    mReturnToStart = returnToStart;
+    mReturnMode = returnToStart ? ReturnMode.START_POINT : ReturnMode.NONE;
     savePrefs(context);
+  }
+
+  public synchronized ReturnMode getReturnMode() {
+    return mReturnMode;
+  }
+
+  public synchronized void setReturnMode(@NonNull ReturnMode mode, @NonNull Context context) {
+    mReturnMode = mode;
+    savePrefs(context);
+  }
+
+  public synchronized void setCustomReturnPlace(double lat, double lon, @NonNull String label, @NonNull Context context) {
+    mReturnMode = ReturnMode.CUSTOM_PLACE;
+    mReturnLat = lat;
+    mReturnLon = lon;
+    mReturnLabel = label;
+    savePrefs(context);
+  }
+
+  public synchronized boolean hasReturnPlace() {
+    if (mReturnMode == ReturnMode.NONE) return false;
+    if (mReturnMode == ReturnMode.START_POINT) {
+      return (mHasCustomStart && (mStartLat != 0.0 || mStartLon != 0.0))
+          || (!mPlannedSites.isEmpty() && mPlannedSites.get(0).hasValidCoords());
+    }
+    if (mReturnMode == ReturnMode.CUSTOM_PLACE) {
+      return (mReturnLat != 0.0 || mReturnLon != 0.0);
+    }
+    return false;
+  }
+
+  public synchronized double getEffectiveReturnLat() {
+    if (mReturnMode == ReturnMode.START_POINT) {
+      return mHasCustomStart ? mStartLat : (mPlannedSites.isEmpty() ? 0.0 : mPlannedSites.get(0).getLatitude());
+    }
+    if (mReturnMode == ReturnMode.CUSTOM_PLACE) {
+      return mReturnLat;
+    }
+    return 0.0;
+  }
+
+  public synchronized double getEffectiveReturnLon() {
+    if (mReturnMode == ReturnMode.START_POINT) {
+      return mHasCustomStart ? mStartLon : (mPlannedSites.isEmpty() ? 0.0 : mPlannedSites.get(0).getLongitude());
+    }
+    if (mReturnMode == ReturnMode.CUSTOM_PLACE) {
+      return mReturnLon;
+    }
+    return 0.0;
+  }
+
+  public synchronized String getEffectiveReturnLabel() {
+    if (mReturnMode == ReturnMode.START_POINT) {
+      return "Start: " + mStartLabel;
+    }
+    if (mReturnMode == ReturnMode.CUSTOM_PLACE) {
+      return mReturnLabel;
+    }
+    return "";
+  }
+
+  public synchronized double getCustomReturnLat() {
+    return mReturnLat;
+  }
+
+  public synchronized double getCustomReturnLon() {
+    return mReturnLon;
+  }
+
+  public synchronized String getCustomReturnLabel() {
+    return mReturnLabel;
   }
 
   public String getStartLabel() {
@@ -200,18 +302,18 @@ public class VisitPlannerManager {
   }
 
   /**
-   * Calculates distance of the return leg from the last site back to the start point.
+   * Calculates distance of the return leg from the last site back to the return destination.
    */
   public synchronized double calculateReturnLegDistanceKm() {
-    if (!mReturnToStart || mPlannedSites.isEmpty()) return 0.0;
+    if (!hasReturnPlace() || mPlannedSites.isEmpty()) return 0.0;
     TelecomSite last = mPlannedSites.get(mPlannedSites.size() - 1);
     if (!last.hasValidCoords()) return 0.0;
 
-    double startLat = mHasCustomStart ? mStartLat : (mPlannedSites.get(0).hasValidCoords() ? mPlannedSites.get(0).getLatitude() : 0.0);
-    double startLon = mHasCustomStart ? mStartLon : (mPlannedSites.get(0).hasValidCoords() ? mPlannedSites.get(0).getLongitude() : 0.0);
+    double returnLat = getEffectiveReturnLat();
+    double returnLon = getEffectiveReturnLon();
 
-    if (startLat == 0.0 && startLon == 0.0) return 0.0;
-    return calculateHaversineDistanceKm(last.getLatitude(), last.getLongitude(), startLat, startLon);
+    if (returnLat == 0.0 && returnLon == 0.0) return 0.0;
+    return calculateHaversineDistanceKm(last.getLatitude(), last.getLongitude(), returnLat, returnLon);
   }
 
   /**
@@ -239,11 +341,11 @@ public class VisitPlannerManager {
     }
 
     // Add return leg if enabled
-    if (mReturnToStart && (mStartLat != 0.0 || mStartLon != 0.0 || (mPlannedSites.get(0).hasValidCoords()))) {
-      double originLat = mHasCustomStart ? mStartLat : mPlannedSites.get(0).getLatitude();
-      double originLon = mHasCustomStart ? mStartLon : mPlannedSites.get(0).getLongitude();
-      if ((currentLat != 0.0 || currentLon != 0.0) && (originLat != 0.0 || originLon != 0.0)) {
-        total += calculateHaversineDistanceKm(currentLat, currentLon, originLat, originLon);
+    if (hasReturnPlace()) {
+      double returnLat = getEffectiveReturnLat();
+      double returnLon = getEffectiveReturnLon();
+      if ((currentLat != 0.0 || currentLon != 0.0) && (returnLat != 0.0 || returnLon != 0.0)) {
+        total += calculateHaversineDistanceKm(currentLat, currentLon, returnLat, returnLon);
       }
     }
 
@@ -252,7 +354,7 @@ public class VisitPlannerManager {
 
   /**
    * Optimizes the visiting sequence using Nearest-Neighbor + 2-Opt heuristic,
-   * factoring in starting location and optional return-to-base journey.
+   * factoring in starting location and optional return journey.
    */
   public synchronized void optimizeSequence(@NonNull Context context) {
     if (mPlannedSites.size() <= 1) return;
@@ -305,7 +407,10 @@ public class VisitPlannerManager {
     }
 
     // Apply 2-Opt improvements
-    apply2Opt(optimized, originLat, originLon, mReturnToStart);
+    boolean hasReturn = hasReturnPlace();
+    double returnLat = hasReturn ? getEffectiveReturnLat() : 0.0;
+    double returnLon = hasReturn ? getEffectiveReturnLon() : 0.0;
+    apply2Opt(optimized, originLat, originLon, returnLat, returnLon, hasReturn);
 
     mPlannedSites.clear();
     mPlannedSites.addAll(optimized);
@@ -313,7 +418,8 @@ public class VisitPlannerManager {
     savePrefs(context);
   }
 
-  private void apply2Opt(List<TelecomSite> list, double originLat, double originLon, boolean closedLoop) {
+  private void apply2Opt(List<TelecomSite> list, double originLat, double originLon,
+                         double returnLat, double returnLon, boolean closedLoop) {
     int n = list.size();
     if (n < 3) return;
 
@@ -325,8 +431,8 @@ public class VisitPlannerManager {
       iterations++;
       for (int i = 0; i < n - 1; i++) {
         for (int k = i + 1; k < n; k++) {
-          double dBefore = calculateSubtourCost(list, i, k, originLat, originLon, closedLoop, false);
-          double dAfter = calculateSubtourCost(list, i, k, originLat, originLon, closedLoop, true);
+          double dBefore = calculateSubtourCost(list, i, k, originLat, originLon, returnLat, returnLon, closedLoop, false);
+          double dAfter = calculateSubtourCost(list, i, k, originLat, originLon, returnLat, returnLon, closedLoop, true);
 
           if (dAfter < dBefore - 0.001) {
             Collections.reverse(list.subList(i, k + 1));
@@ -339,6 +445,7 @@ public class VisitPlannerManager {
 
   private double calculateSubtourCost(List<TelecomSite> list, int i, int k,
                                       double originLat, double originLon,
+                                      double returnLat, double returnLon,
                                       boolean closedLoop, boolean reversed) {
     int n = list.size();
     TelecomSite a = (i == 0) ? null : list.get(i - 1);
@@ -357,8 +464,8 @@ public class VisitPlannerManager {
     // Link from c to successor
     if (d != null && c.hasValidCoords() && d.hasValidCoords()) {
       cost += calculateHaversineDistanceKm(c.getLatitude(), c.getLongitude(), d.getLatitude(), d.getLongitude());
-    } else if (d == null && c.hasValidCoords() && closedLoop && (originLat != 0.0 || originLon != 0.0)) {
-      cost += calculateHaversineDistanceKm(c.getLatitude(), c.getLongitude(), originLat, originLon);
+    } else if (d == null && c.hasValidCoords() && closedLoop && (returnLat != 0.0 || returnLon != 0.0)) {
+      cost += calculateHaversineDistanceKm(c.getLatitude(), c.getLongitude(), returnLat, returnLon);
     }
 
     return cost;

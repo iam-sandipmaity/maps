@@ -9,10 +9,13 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import app.organicmaps.MwmActivity;
+import app.organicmaps.MwmApplication;
 import app.organicmaps.R;
 import app.organicmaps.sdk.Framework;
 import app.organicmaps.sdk.bookmarks.data.FeatureId;
 import app.organicmaps.sdk.bookmarks.data.MapObject;
+import app.organicmaps.sdk.routing.RouteMarkData;
+import app.organicmaps.sdk.routing.RouteMarkType;
 import app.organicmaps.sdk.routing.RoutingController;
 import app.organicmaps.telecom.map.TelecomMapLayerManager;
 import app.organicmaps.telecom.model.TelecomSite;
@@ -241,37 +244,54 @@ public class ExternalNavigationHelper {
   }
 
   /**
-   * Visualizes planned visit route in CoMaps with numbered waypoints and prepares turn-by-turn routing.
+   * Visualizes planned visit route in CoMaps with numbered waypoints and prepares turn-by-turn routing safely.
    */
   public static void showRouteInCoMaps(@NonNull Context context,
                                        double startLat,
                                        double startLon,
                                        @NonNull String startLabel,
+                                       boolean isStartFromGps,
                                        @NonNull List<TelecomSite> stops,
-                                       boolean returnToStart) {
+                                       boolean hasReturn,
+                                       double returnLat,
+                                       double returnLon,
+                                       @NonNull String returnLabel) {
     if (stops.isEmpty()) {
       showToast(context, "No stops in visit plan");
       return;
     }
 
-    // 1. Sync numbered placemarks into CoMaps map layer
-    TelecomMapLayerManager.getInstance().syncRouteToMap(context, startLat, startLon, startLabel, stops, returnToStart);
+    // 1. Sync numbered placemarks into CoMaps map layer (all stops [1]..[N] + return are always visible)
+    TelecomMapLayerManager.getInstance().syncRouteToMap(context, startLat, startLon, startLabel, stops,
+        hasReturn, returnLat, returnLon, returnLabel);
 
-    // 2. Prepare native routing controller
+    // 2. Prepare native turn-by-turn routing controller using batch method
     try {
       double originLat = (startLat != 0.0 || startLon != 0.0) ? startLat : stops.get(0).getLatitude();
       double originLon = (startLat != 0.0 || startLon != 0.0) ? startLon : stops.get(0).getLongitude();
 
-      MapObject startPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, "Start: " + startLabel, "", originLat, originLon);
+      // If starting from GPS or user location, set MY_POSITION so MwmActivity doesn't ask "Navigation is only available from your current location"
+      boolean isStartMyPos = isStartFromGps || startLabel.startsWith("My Location");
+      MapObject startPoint;
+      if (isStartMyPos) {
+        MapObject gpsPos = MwmApplication.from(context).getLocationHelper().getMyPosition();
+        if (gpsPos != null) {
+          startPoint = gpsPos;
+        } else {
+          startPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.MY_POSITION, "My Position", "", originLat, originLon);
+        }
+      } else {
+        startPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, "Start: " + startLabel, "", originLat, originLon);
+      }
 
       double destLat;
       double destLon;
       String destLabel;
 
-      if (returnToStart) {
-        destLat = originLat;
-        destLon = originLon;
-        destLabel = "Return: " + startLabel;
+      if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
+        destLat = returnLat;
+        destLon = returnLon;
+        destLabel = "Return: " + returnLabel;
       } else {
         TelecomSite lastSite = stops.get(stops.size() - 1);
         destLat = lastSite.getLatitude();
@@ -281,17 +301,36 @@ public class ExternalNavigationHelper {
 
       MapObject endPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, destLabel, "", destLat, destLon);
 
-      RoutingController.get().prepare(startPoint, endPoint);
+      // Clean existing route marks to avoid race condition
+      Framework.nativeRemoveRoutePoints();
 
-      // Add intermediate stops
-      int endIndex = returnToStart ? stops.size() : stops.size() - 1;
+      // Batch pattern: 1st add destination, 2nd add start, 3rd add intermediates without reordering
+      Framework.addRoutePoint(new RouteMarkData(endPoint.getTitle(), endPoint.getSubtitle(),
+          RouteMarkType.Finish, 0, true, false, false, destLat, destLon));
+
+      Framework.addRoutePoint(new RouteMarkData(startPoint.getTitle(), startPoint.getSubtitle(),
+          RouteMarkType.Start, 0, !isStartMyPos, isStartMyPos, false, originLat, originLon));
+
+      // Intermediate stops:
+      // For offline road networks, adding more than 4 intermediate points at once can cause offline road snapping failure.
+      // We safely add up to 4 intermediate points for active navigation, while all stops are displayed on the map layer.
+      int endIndex = (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) ? stops.size() : stops.size() - 1;
       int startIndex = (startLat != 0.0 || startLon != 0.0) ? 0 : 1;
+      int intermediateIndex = 0;
       for (int i = startIndex; i < endIndex; i++) {
         TelecomSite s = stops.get(i);
         if (s.hasValidCoords()) {
-          RoutingController.get().addStop(MapObject.createMapObject(FeatureId.EMPTY, MapObject.POI, s.getSiteId(), "", s.getLatitude(), s.getLongitude()));
+          if (intermediateIndex >= 4) {
+            break;
+          }
+          Framework.addRoutePoint(new RouteMarkData(s.getSiteId(), s.getSiteName(),
+              RouteMarkType.Intermediate, intermediateIndex, true, false, false, s.getLatitude(), s.getLongitude()), false);
+          intermediateIndex++;
         }
       }
+
+      // Single planning build call
+      RoutingController.get().launchPlanning();
     } catch (Exception ignored) {
       // Placemark layer remains visible even if native routing data is partially available
     }
@@ -305,6 +344,15 @@ public class ExternalNavigationHelper {
     context.startActivity(intent);
   }
 
+  public static void showRouteInCoMaps(@NonNull Context context,
+                                       double startLat,
+                                       double startLon,
+                                       @NonNull String startLabel,
+                                       @NonNull List<TelecomSite> stops,
+                                       boolean returnToStart) {
+    showRouteInCoMaps(context, startLat, startLon, startLabel, false, stops, returnToStart, startLat, startLon, startLabel);
+  }
+
   /**
    * Opens Google Maps with origin, intermediate waypoints, and destination in one complete itinerary.
    */
@@ -312,7 +360,9 @@ public class ExternalNavigationHelper {
                                                double startLat,
                                                double startLon,
                                                @NonNull List<TelecomSite> stops,
-                                               boolean returnToStart) {
+                                               boolean hasReturn,
+                                               double returnLat,
+                                               double returnLon) {
     if (stops.isEmpty()) {
       showToast(context, "No stops in visit plan");
       return;
@@ -323,9 +373,9 @@ public class ExternalNavigationHelper {
 
     double destLat;
     double destLon;
-    if (returnToStart) {
-      destLat = originLat;
-      destLon = originLon;
+    if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
+      destLat = returnLat;
+      destLon = returnLon;
     } else {
       TelecomSite last = stops.get(stops.size() - 1);
       destLat = last.getLatitude();
@@ -337,7 +387,7 @@ public class ExternalNavigationHelper {
        .append(String.format(Locale.US, "&origin=%.6f,%.6f", originLat, originLon))
        .append(String.format(Locale.US, "&destination=%.6f,%.6f", destLat, destLon));
 
-    int endIndex = returnToStart ? stops.size() : stops.size() - 1;
+    int endIndex = (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) ? stops.size() : stops.size() - 1;
     int startIndex = (startLat != 0.0 || startLon != 0.0) ? 0 : 1;
     List<String> waypoints = new ArrayList<>();
     for (int i = startIndex; i < endIndex; i++) {
@@ -363,6 +413,73 @@ public class ExternalNavigationHelper {
     } else {
       intent.setPackage(null);
       context.startActivity(intent);
+    }
+  }
+
+  public static void openMultiStopInGoogleMaps(@NonNull Context context,
+                                               double startLat,
+                                               double startLon,
+                                               @NonNull List<TelecomSite> stops,
+                                               boolean returnToStart) {
+    openMultiStopInGoogleMaps(context, startLat, startLon, stops, returnToStart, startLat, startLon);
+  }
+
+  /**
+   * Opens turn-by-turn navigation directly in Mappls (MapmyIndia) app or web fallback.
+   */
+  public static void openInMappls(@NonNull Context context, double lat, double lon, @NonNull String destinationName) {
+    if (lat == 0.0 && lon == 0.0) {
+      showToast(context, "Invalid coordinates for Mappls");
+      return;
+    }
+
+    String encodedName = Uri.encode(destinationName);
+    String mapplsUri = String.format(Locale.US, "mappls://navigation?places=%.6f,%.6f,%s&isNav=true&mode=driving", lat, lon, encodedName);
+    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(mapplsUri));
+    intent.setPackage("com.mmi.maps");
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+    if (isIntentResolvable(context, intent)) {
+      context.startActivity(intent);
+    } else {
+      // Fallback: Web or Play Store
+      String webUri = String.format(Locale.US, "https://mappls.com/navigation?places=%.6f,%.6f,%s&isNav=true&mode=driving", lat, lon, encodedName);
+      Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(webUri));
+      webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      if (isIntentResolvable(context, webIntent)) {
+        context.startActivity(webIntent);
+      } else {
+        try {
+          Intent marketIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.mmi.maps"));
+          marketIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          context.startActivity(marketIntent);
+        } catch (Exception e) {
+          showToast(context, "Mappls (MapmyIndia) is not installed");
+        }
+      }
+    }
+  }
+
+  /**
+   * Navigates the first/next stop in the visit plan using Mappls.
+   */
+  public static void openMultiStopInMappls(@NonNull Context context, @NonNull List<TelecomSite> stops) {
+    if (stops.isEmpty()) {
+      showToast(context, "No stops in visit plan");
+      return;
+    }
+    TelecomSite nextStop = null;
+    for (TelecomSite s : stops) {
+      if (s.hasValidCoords()) {
+        nextStop = s;
+        break;
+      }
+    }
+    if (nextStop != null) {
+      showToast(context, "Launching navigation to " + nextStop.getSiteId() + " in Mappls");
+      openInMappls(context, nextStop.getLatitude(), nextStop.getLongitude(), nextStop.getSiteId());
+    } else {
+      showToast(context, "No stops with valid coordinates");
     }
   }
 

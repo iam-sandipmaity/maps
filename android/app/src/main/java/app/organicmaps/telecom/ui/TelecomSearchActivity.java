@@ -39,6 +39,13 @@ public class TelecomSearchActivity extends AppCompatActivity {
   private final Handler mHandler = new Handler(Looper.getMainLooper());
   private Runnable mSearchRunnable;
 
+  private static final int PAGE_SIZE = 100;
+  private int mCurrentOffset = 0;
+  private int mTotalCount = 0;
+  private String mCurrentQuery = "";
+  private boolean mIsLoading = false;
+  private boolean mHasMore = true;
+
   public static void start(@NonNull Context context, @Nullable String initialQuery) {
     Intent intent = new Intent(context, TelecomSearchActivity.class);
     if (initialQuery != null) {
@@ -65,8 +72,24 @@ public class TelecomSearchActivity extends AppCompatActivity {
     mTvEmpty = findViewById(R.id.tv_empty);
 
     mAdapter = new SearchAdapter();
-    mRvResults.setLayoutManager(new LinearLayoutManager(this));
+    LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+    mRvResults.setLayoutManager(layoutManager);
     mRvResults.setAdapter(mAdapter);
+
+    mRvResults.addOnScrollListener(new RecyclerView.OnScrollListener() {
+      @Override
+      public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+        if (dy <= 0) return;
+        if (mHasMore && !mIsLoading) {
+          int visibleItemCount = layoutManager.getChildCount();
+          int totalItemCount = layoutManager.getItemCount();
+          int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
+          if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount - 15) {
+            loadNextPage();
+          }
+        }
+      }
+    });
 
     mEtSearch.addTextChangedListener(new TextWatcher() {
       @Override
@@ -77,7 +100,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
         if (mSearchRunnable != null) {
           mHandler.removeCallbacks(mSearchRunnable);
         }
-        mSearchRunnable = () -> performSearch(s != null ? s.toString() : "");
+        mSearchRunnable = () -> resetAndSearch(s != null ? s.toString() : "");
         mHandler.postDelayed(mSearchRunnable, 200); // 200ms debounce
       }
 
@@ -89,15 +112,24 @@ public class TelecomSearchActivity extends AppCompatActivity {
     if (initialQuery != null && !initialQuery.isEmpty()) {
       mEtSearch.setText(initialQuery);
     } else {
-      performSearch("");
+      resetAndSearch("");
     }
   }
 
-  private void performSearch(@NonNull String query) {
+  private void resetAndSearch(@NonNull String query) {
+    mCurrentQuery = query;
+    mCurrentOffset = 0;
+    mHasMore = true;
+    mIsLoading = true;
+
     new Thread(() -> {
       TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
-      List<TelecomSite> results = db.searchSites(query, 100);
+      mTotalCount = db.countSites(query);
+      List<TelecomSite> results = db.searchSites(query, PAGE_SIZE, 0);
       runOnUiThread(() -> {
+        mIsLoading = false;
+        mCurrentOffset = results.size();
+        mHasMore = results.size() >= PAGE_SIZE && mCurrentOffset < mTotalCount;
         mAdapter.setSites(results);
         if (results.isEmpty()) {
           mTvEmpty.setVisibility(View.VISIBLE);
@@ -105,8 +137,34 @@ public class TelecomSearchActivity extends AppCompatActivity {
         } else {
           mTvEmpty.setVisibility(View.GONE);
           mTvResultCount.setVisibility(View.VISIBLE);
-          mTvResultCount.setText("Found " + results.size() + (results.size() == 100 ? "+ matching sites" : " matching sites"));
+          if (mTotalCount > results.size()) {
+            mTvResultCount.setText("Showing " + results.size() + " of " + mTotalCount + " sites (scroll for more)");
+          } else {
+            mTvResultCount.setText("Found " + results.size() + " matching sites");
+          }
         }
+      });
+    }).start();
+  }
+
+  private void loadNextPage() {
+    if (mIsLoading || !mHasMore) return;
+    mIsLoading = true;
+    final int offset = mCurrentOffset;
+
+    new Thread(() -> {
+      TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
+      List<TelecomSite> nextBatch = db.searchSites(mCurrentQuery, PAGE_SIZE, offset);
+      runOnUiThread(() -> {
+        mIsLoading = false;
+        if (nextBatch.isEmpty()) {
+          mHasMore = false;
+          return;
+        }
+        mCurrentOffset += nextBatch.size();
+        mAdapter.appendSites(nextBatch);
+        mHasMore = nextBatch.size() >= PAGE_SIZE && mCurrentOffset < mTotalCount;
+        mTvResultCount.setText("Showing " + mAdapter.getItemCount() + " of " + mTotalCount + " sites");
       });
     }).start();
   }
@@ -120,6 +178,14 @@ public class TelecomSearchActivity extends AppCompatActivity {
         mSites.addAll(sites);
       }
       notifyDataSetChanged();
+    }
+
+    public void appendSites(List<TelecomSite> sites) {
+      if (sites != null && !sites.isEmpty()) {
+        int startPos = mSites.size();
+        mSites.addAll(sites);
+        notifyItemRangeInserted(startPos, sites.size());
+      }
     }
 
     @NonNull

@@ -37,8 +37,10 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
   private TextView mTvTotalDistance;
   private TextView mTvStartLocation;
   private TextView mTvEmptyPlan;
-  private SwitchMaterial mSwitchReturnToStart;
+  private TextView mTvReturnModeSummary;
+  private Button mBtnChangeReturnMode;
   private MaterialCardView mCardReturnStop;
+  private TextView mTvReturnTitle;
   private TextView mTvReturnDestination;
   private TextView mTvReturnDistance;
   private RecyclerView mRvStops;
@@ -68,8 +70,10 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
     mTvTotalDistance = findViewById(R.id.tv_total_distance);
     mTvStartLocation = findViewById(R.id.tv_start_location);
     mTvEmptyPlan = findViewById(R.id.tv_empty_plan);
-    mSwitchReturnToStart = findViewById(R.id.switch_return_to_start);
+    mTvReturnModeSummary = findViewById(R.id.tv_return_mode_summary);
+    mBtnChangeReturnMode = findViewById(R.id.btn_change_return_mode);
     mCardReturnStop = findViewById(R.id.card_return_stop);
+    mTvReturnTitle = findViewById(R.id.tv_return_title);
     mTvReturnDestination = findViewById(R.id.tv_return_destination);
     mTvReturnDistance = findViewById(R.id.tv_return_distance);
     mRvStops = findViewById(R.id.rv_stops);
@@ -92,11 +96,8 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
       Toast.makeText(this, "Start point reset to first site", Toast.LENGTH_SHORT).show();
     });
 
-    mSwitchReturnToStart.setChecked(mPlannerManager.isReturnToStart());
-    mSwitchReturnToStart.setOnCheckedChangeListener((buttonView, isChecked) -> {
-      mPlannerManager.setReturnToStart(isChecked, this);
-      refreshPlanUi();
-    });
+    mBtnChangeReturnMode.setOnClickListener(v -> showReturnOptionsDialog());
+    mCardReturnStop.setOnClickListener(v -> showReturnOptionsDialog());
 
     btnOptimize.setOnClickListener(v -> showOptimizeConfirmDialog());
 
@@ -107,7 +108,26 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
         return;
       }
       TelecomSite nextStop = sites.get(0);
-      ExternalNavigationHelper.openInGoogleMaps(this, nextStop, true);
+      CharSequence[] navOptions = {
+          "Navigate in CoMaps (Turn-by-Turn)",
+          "Navigate in Google Maps",
+          "Navigate in Mappls by MapmyIndia"
+      };
+      new AlertDialog.Builder(this)
+          .setTitle("Navigate to Next Site: " + nextStop.getSiteId())
+          .setItems(navOptions, (dialog, which) -> {
+            if (which == 0) {
+              ExternalNavigationHelper.showRouteInCoMaps(this, mPlannerManager.getStartLat(),
+                  mPlannerManager.getStartLon(), mPlannerManager.getStartLabel(),
+                  mPlannerManager.isStartFromGps(), java.util.Collections.singletonList(nextStop),
+                  false, 0, 0, "");
+            } else if (which == 1) {
+              ExternalNavigationHelper.openInGoogleMaps(this, nextStop, true);
+            } else {
+              ExternalNavigationHelper.openInMappls(this, nextStop.getLatitude(), nextStop.getLongitude(), nextStop.getSiteId());
+            }
+          })
+          .show();
     });
 
     btnShowRouteMap.setOnClickListener(v -> showRouteOnMap());
@@ -180,15 +200,34 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
     mTvTotalDistance.setText(String.format(Locale.US, "Est. Distance: %.1f km", totalDist));
 
     mTvStartLocation.setText("Starting From: " + mPlannerManager.getStartLabel());
-    mSwitchReturnToStart.setChecked(mPlannerManager.isReturnToStart());
 
-    if (mPlannerManager.isReturnToStart() && count > 0) {
-      mCardReturnStop.setVisibility(View.VISIBLE);
-      mTvReturnDestination.setText("Back to " + mPlannerManager.getStartLabel());
-      double returnDist = mPlannerManager.calculateReturnLegDistanceKm();
-      mTvReturnDistance.setText(String.format(Locale.US, "Return leg: +%.1f km", returnDist));
-    } else {
+    VisitPlannerManager.ReturnMode returnMode = mPlannerManager.getReturnMode();
+    if (returnMode == VisitPlannerManager.ReturnMode.NONE) {
+      mTvReturnModeSummary.setText("Return: No return (one-way)");
       mCardReturnStop.setVisibility(View.GONE);
+    } else if (returnMode == VisitPlannerManager.ReturnMode.START_POINT) {
+      mTvReturnModeSummary.setText("Return: Start Point (Round-trip)");
+      if (count > 0) {
+        mCardReturnStop.setVisibility(View.VISIBLE);
+        if (mTvReturnTitle != null) mTvReturnTitle.setText("Return to Start Point");
+        mTvReturnDestination.setText("Back to " + mPlannerManager.getStartLabel());
+        double returnDist = mPlannerManager.calculateReturnLegDistanceKm();
+        mTvReturnDistance.setText(String.format(Locale.US, "Return leg: +%.1f km", returnDist));
+      } else {
+        mCardReturnStop.setVisibility(View.GONE);
+      }
+    } else if (returnMode == VisitPlannerManager.ReturnMode.CUSTOM_PLACE) {
+      mTvReturnModeSummary.setText("Return: " + mPlannerManager.getCustomReturnLabel());
+      if (count > 0) {
+        mCardReturnStop.setVisibility(View.VISIBLE);
+        if (mTvReturnTitle != null) mTvReturnTitle.setText("Return to Custom Place");
+        mTvReturnDestination.setText(mPlannerManager.getCustomReturnLabel() + String.format(Locale.US, " (%.4f, %.4f)",
+            mPlannerManager.getCustomReturnLat(), mPlannerManager.getCustomReturnLon()));
+        double returnDist = mPlannerManager.calculateReturnLegDistanceKm();
+        mTvReturnDistance.setText(String.format(Locale.US, "Return leg: +%.1f km", returnDist));
+      } else {
+        mCardReturnStop.setVisibility(View.GONE);
+      }
     }
 
     if (count == 0) {
@@ -200,11 +239,102 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
     }
   }
 
+  private void showReturnOptionsDialog() {
+    CharSequence[] options = {
+        "No Return (One-way itinerary)",
+        "Return to Start Point (Round-trip)",
+        "Return to Current GPS Location",
+        "Set Custom Site / Place as Return..."
+    };
+
+    int currentIdx = 0;
+    VisitPlannerManager.ReturnMode mode = mPlannerManager.getReturnMode();
+    if (mode == VisitPlannerManager.ReturnMode.NONE) currentIdx = 0;
+    else if (mode == VisitPlannerManager.ReturnMode.START_POINT) currentIdx = 1;
+    else if (mode == VisitPlannerManager.ReturnMode.CUSTOM_PLACE) currentIdx = 3;
+
+    new AlertDialog.Builder(this)
+        .setTitle("Select Return Destination")
+        .setSingleChoiceItems(options, currentIdx, (dialog, which) -> {
+          dialog.dismiss();
+          if (which == 0) {
+            mPlannerManager.setReturnMode(VisitPlannerManager.ReturnMode.NONE, this);
+            refreshPlanUi();
+            Toast.makeText(this, "Return destination removed", Toast.LENGTH_SHORT).show();
+          } else if (which == 1) {
+            mPlannerManager.setReturnMode(VisitPlannerManager.ReturnMode.START_POINT, this);
+            refreshPlanUi();
+            Toast.makeText(this, "Set return to starting point", Toast.LENGTH_SHORT).show();
+          } else if (which == 2) {
+            setReturnToCurrentGps();
+          } else if (which == 3) {
+            promptCustomReturnPlace();
+          }
+        })
+        .setNegativeButton("Cancel", null)
+        .show();
+  }
+
+  private void setReturnToCurrentGps() {
+    try {
+      Location loc = MwmApplication.from(this).getLocationHelper().getSavedLocation();
+      if (loc == null) {
+        MapObject myPos = MwmApplication.from(this).getLocationHelper().getMyPosition();
+        if (myPos != null) {
+          loc = new Location("gps");
+          loc.setLatitude(myPos.getLat());
+          loc.setLongitude(myPos.getLon());
+        }
+      }
+      if (loc != null) {
+        mPlannerManager.setCustomReturnPlace(loc.getLatitude(), loc.getLongitude(), "My Current Location", this);
+        refreshPlanUi();
+        Toast.makeText(this, "Return set to Current GPS Location", Toast.LENGTH_SHORT).show();
+      } else {
+        Toast.makeText(this, "GPS location not available yet", Toast.LENGTH_SHORT).show();
+      }
+    } catch (Exception e) {
+      Toast.makeText(this, "Error getting location: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+    }
+  }
+
+  private void promptCustomReturnPlace() {
+    android.widget.EditText input = new android.widget.EditText(this);
+    input.setHint("Enter Site ID or Place Name");
+    new AlertDialog.Builder(this)
+        .setTitle("Custom Return Destination")
+        .setMessage("Enter the Site ID to return to (or a custom base name):")
+        .setView(input)
+        .setPositiveButton("Set", (dialog, which) -> {
+          String entered = input.getText().toString().trim();
+          if (entered.isEmpty()) return;
+          new Thread(() -> {
+            TelecomSite site = app.organicmaps.telecom.db.TelecomDatabaseHelper.getInstance(this).getSiteById(entered);
+            runOnUiThread(() -> {
+              if (site != null && site.hasValidCoords()) {
+                mPlannerManager.setCustomReturnPlace(site.getLatitude(), site.getLongitude(),
+                    site.getSiteId() + (site.getSiteName().isEmpty() ? "" : " - " + site.getSiteName()), this);
+                refreshPlanUi();
+                Toast.makeText(this, "Return set to site " + site.getSiteId(), Toast.LENGTH_SHORT).show();
+              } else {
+                Toast.makeText(this, "Site ID not found with valid coordinates", Toast.LENGTH_LONG).show();
+              }
+            });
+          }).start();
+        })
+        .setNegativeButton("Cancel", null)
+        .show();
+  }
+
   private void showOptimizeConfirmDialog() {
+    String returnInfo = mPlannerManager.hasReturnPlace()
+        ? " and returning to " + mPlannerManager.getEffectiveReturnLabel() + "."
+        : ".";
+
     new AlertDialog.Builder(this)
         .setTitle("Arrange & Optimize Route Sequence")
         .setMessage("This will rearrange your stops starting from " + mPlannerManager.getStartLabel()
-            + (mPlannerManager.isReturnToStart() ? " and returning back to base." : ".")
+            + returnInfo
             + "\n\nGeospatial shortest-distance heuristics (Nearest-Neighbor & 2-Opt) will minimize total traveling distance.")
         .setPositiveButton("Optimize", (dialog, which) -> {
           mPlannerManager.optimizeSequence(this);
@@ -225,16 +355,28 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
     double startLat = mPlannerManager.getStartLat();
     double startLon = mPlannerManager.getStartLon();
     String startLabel = mPlannerManager.getStartLabel();
-    boolean returnToStart = mPlannerManager.isReturnToStart();
+    boolean isStartFromGps = mPlannerManager.isStartFromGps();
+    boolean hasReturn = mPlannerManager.hasReturnPlace();
+    double returnLat = mPlannerManager.getEffectiveReturnLat();
+    double returnLon = mPlannerManager.getEffectiveReturnLon();
+    String returnLabel = mPlannerManager.getEffectiveReturnLabel();
 
-    CharSequence[] options = {"Show in CoMaps (Offline Map & Route)", "Open in Google Maps (Multi-Stop)"};
+    CharSequence[] options = {
+        "CoMaps (Offline Map & Route Pins)",
+        "Google Maps (Multi-Stop Itinerary)",
+        "Mappls by MapmyIndia (Turn-by-Turn Nav)"
+    };
     new AlertDialog.Builder(this)
         .setTitle("Show Route in Map")
         .setItems(options, (dialog, which) -> {
           if (which == 0) {
-            ExternalNavigationHelper.showRouteInCoMaps(this, startLat, startLon, startLabel, sites, returnToStart);
+            ExternalNavigationHelper.showRouteInCoMaps(this, startLat, startLon, startLabel, isStartFromGps,
+                sites, hasReturn, returnLat, returnLon, returnLabel);
+          } else if (which == 1) {
+            ExternalNavigationHelper.openMultiStopInGoogleMaps(this, startLat, startLon, sites,
+                hasReturn, returnLat, returnLon);
           } else {
-            ExternalNavigationHelper.openMultiStopInGoogleMaps(this, startLat, startLon, sites, returnToStart);
+            ExternalNavigationHelper.openMultiStopInMappls(this, sites);
           }
         })
         .show();
