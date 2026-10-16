@@ -921,9 +921,23 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
 
   @NonNull
   public List<String> getAllDistinctTechnicians() {
+    return getAllDistinctTechnicians(null);
+  }
+
+  @NonNull
+  public List<String> getAllDistinctTechnicians(@Nullable String jcName) {
     List<String> list = new ArrayList<>();
     SQLiteDatabase db = getReadableDatabase();
-    Cursor c = db.rawQuery("SELECT DISTINCT " + COL_TECH_NAME + " FROM " + TABLE_SITES + " WHERE " + COL_TECH_NAME + " IS NOT NULL AND TRIM(" + COL_TECH_NAME + ") != '' ORDER BY " + COL_TECH_NAME + " ASC", null);
+    String query;
+    String[] args;
+    if (jcName != null && !jcName.trim().isEmpty()) {
+      query = "SELECT DISTINCT " + COL_TECH_NAME + " FROM " + TABLE_SITES + " WHERE " + COL_TECH_NAME + " IS NOT NULL AND TRIM(" + COL_TECH_NAME + ") != '' AND " + COL_LOCATION + " = ? ORDER BY " + COL_TECH_NAME + " ASC";
+      args = new String[]{jcName.trim()};
+    } else {
+      query = "SELECT DISTINCT " + COL_TECH_NAME + " FROM " + TABLE_SITES + " WHERE " + COL_TECH_NAME + " IS NOT NULL AND TRIM(" + COL_TECH_NAME + ") != '' ORDER BY " + COL_TECH_NAME + " ASC";
+      args = null;
+    }
+    Cursor c = db.rawQuery(query, args);
     while (c.moveToNext()) {
       list.add(c.getString(0).trim());
     }

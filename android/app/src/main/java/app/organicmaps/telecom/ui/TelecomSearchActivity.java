@@ -237,6 +237,20 @@ public class TelecomSearchActivity extends AppCompatActivity {
           } else {
             mSelectedJc = options.get(which);
           }
+          // Reset technician if it no longer belongs to the newly selected JC
+          if (mSelectedTech != null && mSelectedJc != null) {
+            new Thread(() -> {
+              List<String> jcTechs = db.getAllDistinctTechnicians(mSelectedJc);
+              if (!jcTechs.contains(mSelectedTech)) {
+                mSelectedTech = null;
+              }
+              runOnUiThread(() -> {
+                updateFilterChipTexts();
+                resetAndSearch(mCurrentQuery);
+              });
+            }).start();
+            return;
+          }
           updateFilterChipTexts();
           resetAndSearch(mCurrentQuery);
         });
@@ -248,10 +262,13 @@ public class TelecomSearchActivity extends AppCompatActivity {
   private void showTechFilterDialog() {
     new Thread(() -> {
       TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
-      List<String> techList = db.getAllDistinctTechnicians();
+      List<String> techList = db.getAllDistinctTechnicians(mSelectedJc);
       runOnUiThread(() -> {
         if (techList.isEmpty()) {
-          Toast.makeText(this, "No technicians found in database", Toast.LENGTH_SHORT).show();
+          String msg = mSelectedJc != null
+              ? "No technicians found for JC: " + mSelectedJc
+              : "No technicians found in database";
+          Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
           return;
         }
 
@@ -260,7 +277,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
         options.addAll(techList);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Filter by Technician");
+        builder.setTitle(mSelectedJc != null ? "Technicians in " + mSelectedJc : "Filter by Technician");
         builder.setItems(options.toArray(new String[0]), (dialog, which) -> {
           if (which == 0) {
             mSelectedTech = null;
