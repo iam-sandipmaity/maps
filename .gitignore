@@ -218,3 +218,9 @@ tools/unix/maps/settings.sh
 # VS Code
 .vscode
 .cache
+
+# Telecom spreadsheets & tracker data (strictly user-side)
+*.xlsx
+*.xls
+*infra_tracker*
+android/app/src/main/assets/telecom/

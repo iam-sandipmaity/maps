@@ -64,6 +64,21 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
     }
     toolbar.setNavigationOnClickListener(v -> finish());
 
+    androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, insets) -> {
+      androidx.core.graphics.Insets statusBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars());
+      v.setPadding(v.getPaddingLeft(), statusBarInsets.top, v.getPaddingRight(), v.getPaddingBottom());
+      return insets;
+    });
+
+    View root = findViewById(android.R.id.content);
+    if (root != null) {
+      androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+        androidx.core.graphics.Insets navBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars());
+        v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), navBarInsets.bottom);
+        return insets;
+      });
+    }
+
     mPlannerManager = VisitPlannerManager.getInstance(this);
 
     mTvStopsCount = findViewById(R.id.tv_stops_count);

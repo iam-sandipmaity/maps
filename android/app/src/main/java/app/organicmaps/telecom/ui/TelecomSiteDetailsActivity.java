@@ -43,6 +43,21 @@ public class TelecomSiteDetailsActivity extends AppCompatActivity {
     }
     toolbar.setNavigationOnClickListener(v -> finish());
 
+    androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, insets) -> {
+      androidx.core.graphics.Insets statusBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars());
+      v.setPadding(v.getPaddingLeft(), statusBarInsets.top, v.getPaddingRight(), v.getPaddingBottom());
+      return insets;
+    });
+
+    View contentScroll = findViewById(R.id.content_scroll);
+    if (contentScroll != null) {
+      androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(contentScroll, (v, insets) -> {
+        androidx.core.graphics.Insets navBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars());
+        v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), navBarInsets.bottom);
+        return insets;
+      });
+    }
+
     String siteId = getIntent().getStringExtra(EXTRA_SITE_ID);
     if (siteId == null || siteId.isEmpty()) {
       Toast.makeText(this, "Site ID not specified", Toast.LENGTH_SHORT).show();

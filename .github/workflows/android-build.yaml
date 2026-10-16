@@ -34,6 +34,9 @@ on:
 env:
   SKIP_MAP_DOWNLOAD: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Android APK (${{ inputs.flavor || 'FdroidDebug' }})
@@ -117,3 +120,20 @@ jobs:
           name: CoMaps-${{ inputs.flavor || 'FdroidDebug' }}-APK
           path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
+
+      - name: Release APK
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'CoMaps Latest Telecom Build' }}
+          body: |
+            Automated build for CoMaps with Telecom Management System.
+            - Built commit: `${{ github.sha }}`
+            - Flavor: `${{ inputs.flavor || 'FdroidDebug' }}`
+            - Architecture: `${{ inputs.arch || 'arm64' }}`
+          draft: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          files: android/app/build/outputs/apk/**/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

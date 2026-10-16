@@ -14,7 +14,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -64,6 +66,15 @@ public class TelecomSearchActivity extends AppCompatActivity {
   private double mSelectedRadiusMeters = -1.0;
   private String mCustomRadiusLabel = "Custom...";
 
+  private ImageButton mBtnToggleFilters;
+  private LinearLayout mLayoutAdvancedFilters;
+  private Chip mChipFilterJc;
+  private Chip mChipFilterTech;
+  private MaterialButton mBtnResetFilters;
+
+  private String mSelectedJc = null;
+  private String mSelectedTech = null;
+
   public static void start(@NonNull Context context, @Nullable String initialQuery) {
     Intent intent = new Intent(context, TelecomSearchActivity.class);
     if (initialQuery != null) {
@@ -84,12 +95,35 @@ public class TelecomSearchActivity extends AppCompatActivity {
     }
     toolbar.setNavigationOnClickListener(v -> finish());
 
+    androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, insets) -> {
+      androidx.core.graphics.Insets statusBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars());
+      v.setPadding(v.getPaddingLeft(), statusBarInsets.top, v.getPaddingRight(), v.getPaddingBottom());
+      return insets;
+    });
+
+    View root = findViewById(android.R.id.content);
+    if (root != null) {
+      androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+        androidx.core.graphics.Insets navBarInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars());
+        v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), navBarInsets.bottom);
+        return insets;
+      });
+    }
+
     mEtSearch = findViewById(R.id.et_search);
     mCgRadius = findViewById(R.id.cg_radius);
     mRvResults = findViewById(R.id.rv_results);
     mTvResultCount = findViewById(R.id.tv_result_count);
     mBtnShowOnMap = findViewById(R.id.btn_show_on_map);
     mTvEmpty = findViewById(R.id.tv_empty);
+
+    mBtnToggleFilters = findViewById(R.id.btn_toggle_filters);
+    mLayoutAdvancedFilters = findViewById(R.id.layout_advanced_filters);
+    mChipFilterJc = findViewById(R.id.chip_filter_jc);
+    mChipFilterTech = findViewById(R.id.chip_filter_tech);
+    mBtnResetFilters = findViewById(R.id.btn_reset_filters);
+
+    setupAdvancedFilters();
 
     mAdapter = new SearchAdapter();
     LinearLayoutManager layoutManager = new LinearLayoutManager(this);
@@ -100,7 +134,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
       @Override
       public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
         if (dy <= 0) return;
-        if (mHasMore && !mIsLoading && mSelectedRadiusMeters <= 0.0) {
+        if (mHasMore && !mIsLoading && mSelectedRadiusMeters <= 0.0 && mSelectedJc == null && mSelectedTech == null) {
           int visibleItemCount = layoutManager.getChildCount();
           int totalItemCount = layoutManager.getItemCount();
           int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
@@ -138,6 +172,107 @@ public class TelecomSearchActivity extends AppCompatActivity {
     } else {
       resetAndSearch("");
     }
+  }
+
+  private void setupAdvancedFilters() {
+    mBtnToggleFilters.setOnClickListener(v -> {
+      if (mLayoutAdvancedFilters.getVisibility() == View.VISIBLE) {
+        mLayoutAdvancedFilters.setVisibility(View.GONE);
+      } else {
+        mLayoutAdvancedFilters.setVisibility(View.VISIBLE);
+      }
+    });
+
+    mChipFilterJc.setOnClickListener(v -> showJcFilterDialog());
+    mChipFilterTech.setOnClickListener(v -> showTechFilterDialog());
+
+    mBtnResetFilters.setOnClickListener(v -> {
+      mSelectedJc = null;
+      mSelectedTech = null;
+      updateFilterChipTexts();
+      resetAndSearch(mCurrentQuery);
+    });
+  }
+
+  private void updateFilterChipTexts() {
+    if (mSelectedJc != null) {
+      mChipFilterJc.setText("JC: " + mSelectedJc);
+      mChipFilterJc.setChipBackgroundColorResource(R.color.base_accent_transparent);
+    } else {
+      mChipFilterJc.setText("JC: All");
+      mChipFilterJc.setChipBackgroundColor(null);
+    }
+
+    if (mSelectedTech != null) {
+      mChipFilterTech.setText("Tech: " + mSelectedTech);
+      mChipFilterTech.setChipBackgroundColorResource(R.color.base_accent_transparent);
+    } else {
+      mChipFilterTech.setText("Tech: All");
+      mChipFilterTech.setChipBackgroundColor(null);
+    }
+
+    boolean hasActiveFilters = mSelectedJc != null || mSelectedTech != null;
+    mBtnResetFilters.setVisibility(hasActiveFilters ? View.VISIBLE : View.GONE);
+  }
+
+  private void showJcFilterDialog() {
+    new Thread(() -> {
+      TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
+      List<String> jcList = db.getAllDistinctJcNames();
+      runOnUiThread(() -> {
+        if (jcList.isEmpty()) {
+          Toast.makeText(this, "No JC names found in database", Toast.LENGTH_SHORT).show();
+          return;
+        }
+
+        List<String> options = new ArrayList<>();
+        options.add("All JCs (Clear)");
+        options.addAll(jcList);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Filter by JC");
+        builder.setItems(options.toArray(new String[0]), (dialog, which) -> {
+          if (which == 0) {
+            mSelectedJc = null;
+          } else {
+            mSelectedJc = options.get(which);
+          }
+          updateFilterChipTexts();
+          resetAndSearch(mCurrentQuery);
+        });
+        builder.show();
+      });
+    }).start();
+  }
+
+  private void showTechFilterDialog() {
+    new Thread(() -> {
+      TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
+      List<String> techList = db.getAllDistinctTechnicians();
+      runOnUiThread(() -> {
+        if (techList.isEmpty()) {
+          Toast.makeText(this, "No technicians found in database", Toast.LENGTH_SHORT).show();
+          return;
+        }
+
+        List<String> options = new ArrayList<>();
+        options.add("All Technicians (Clear)");
+        options.addAll(techList);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Filter by Technician");
+        builder.setItems(options.toArray(new String[0]), (dialog, which) -> {
+          if (which == 0) {
+            mSelectedTech = null;
+          } else {
+            mSelectedTech = options.get(which);
+          }
+          updateFilterChipTexts();
+          resetAndSearch(mCurrentQuery);
+        });
+        builder.show();
+      });
+    }).start();
   }
 
   private void setupRadiusFilterChips() {
@@ -250,9 +385,6 @@ public class TelecomSearchActivity extends AppCompatActivity {
 
     new Thread(() -> {
       TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
-      if (db.getSitesCount() == 0) {
-        db.ensureBundledDataLoaded(this);
-      }
 
       double[] loc = getCurrentLocation();
 
@@ -272,17 +404,20 @@ public class TelecomSearchActivity extends AppCompatActivity {
 
         List<TelecomSite> withinRadius = db.getSitesWithinRadius(loc[0], loc[1], mSelectedRadiusMeters);
 
-        // If text query is present, filter within radius
+        // If text query or JC / Tech filters are present, filter within radius
         List<TelecomSite> filtered = new ArrayList<>();
-        if (!query.trim().isEmpty()) {
-          List<String> tokens = TelecomDatabaseHelper.extractSearchTokens(query);
-          for (TelecomSite s : withinRadius) {
-            if (matchesTokens(s, tokens)) {
-              filtered.add(s);
-            }
+        List<String> tokens = !query.trim().isEmpty() ? TelecomDatabaseHelper.extractSearchTokens(query) : new ArrayList<>();
+        for (TelecomSite s : withinRadius) {
+          if (!tokens.isEmpty() && !matchesTokens(s, tokens)) {
+            continue;
           }
-        } else {
-          filtered = withinRadius;
+          if (mSelectedJc != null && !mSelectedJc.equalsIgnoreCase(s.getLocation())) {
+            continue;
+          }
+          if (mSelectedTech != null && !mSelectedTech.equalsIgnoreCase(s.getTechnicianName())) {
+            continue;
+          }
+          filtered.add(s);
         }
 
         final List<TelecomSite> finalResults = filtered;
@@ -298,7 +433,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
 
           if (finalResults.isEmpty()) {
             mTvEmpty.setVisibility(View.VISIBLE);
-            mTvEmpty.setText("No telecom sites found within " + radiusDesc + " of your current location.");
+            mTvEmpty.setText("No telecom sites found matching current filters within " + radiusDesc + ".");
             mTvResultCount.setVisibility(View.GONE);
             mBtnShowOnMap.setVisibility(View.GONE);
           } else {
@@ -312,8 +447,34 @@ public class TelecomSearchActivity extends AppCompatActivity {
 
       } else {
         // Standard search across all sites
-        mTotalCount = db.countSites(query);
-        List<TelecomSite> results = db.searchSites(query, PAGE_SIZE, 0);
+        List<TelecomSite> results;
+        int count;
+
+        boolean hasJcOrTechFilter = mSelectedJc != null || mSelectedTech != null;
+        if (hasJcOrTechFilter) {
+          // When JC or Tech filter is active, fetch candidates and filter
+          List<TelecomSite> allCandidates = query.trim().isEmpty()
+              ? db.getAllSites(-1, 0)
+              : db.searchSites(query, -1, 0);
+
+          List<TelecomSite> filtered = new ArrayList<>();
+          for (TelecomSite s : allCandidates) {
+            if (mSelectedJc != null && !mSelectedJc.equalsIgnoreCase(s.getLocation())) {
+              continue;
+            }
+            if (mSelectedTech != null && !mSelectedTech.equalsIgnoreCase(s.getTechnicianName())) {
+              continue;
+            }
+            filtered.add(s);
+          }
+          results = filtered;
+          count = filtered.size();
+        } else {
+          count = db.countSites(query);
+          results = db.searchSites(query, PAGE_SIZE, 0);
+        }
+
+        mTotalCount = count;
 
         // Populate distance if location is available
         if (loc != null) {
@@ -325,24 +486,29 @@ public class TelecomSearchActivity extends AppCompatActivity {
           }
         }
 
+        final List<TelecomSite> displayResults = results;
         runOnUiThread(() -> {
           mIsLoading = false;
-          mCurrentOffset = results.size();
-          mHasMore = results.size() >= PAGE_SIZE && mCurrentOffset < mTotalCount;
-          mAdapter.setSites(results);
+          mCurrentOffset = displayResults.size();
+          mHasMore = !hasJcOrTechFilter && displayResults.size() >= PAGE_SIZE && mCurrentOffset < mTotalCount;
+          mAdapter.setSites(displayResults);
 
-          if (results.isEmpty()) {
+          if (displayResults.isEmpty()) {
             mTvEmpty.setVisibility(View.VISIBLE);
-            mTvEmpty.setText("No matching telecom sites found.\nTry searching Site ID, location, or technician.");
+            if (db.getSitesCount() == 0) {
+              mTvEmpty.setText("No telecom sites found.\nPlease import your site tracker file from Telecom Data Management.");
+            } else {
+              mTvEmpty.setText("No matching telecom sites found.\nTry adjusting your search or active filters.");
+            }
             mTvResultCount.setVisibility(View.GONE);
             mBtnShowOnMap.setVisibility(View.GONE);
           } else {
             mTvEmpty.setVisibility(View.GONE);
             mTvResultCount.setVisibility(View.VISIBLE);
-            if (mTotalCount > results.size()) {
-              mTvResultCount.setText("Showing " + results.size() + " of " + mTotalCount + " sites (scroll for more)");
+            if (!hasJcOrTechFilter && mTotalCount > displayResults.size()) {
+              mTvResultCount.setText("Showing " + displayResults.size() + " of " + mTotalCount + " sites (scroll for more)");
             } else {
-              mTvResultCount.setText("Found " + results.size() + " matching sites");
+              mTvResultCount.setText("Found " + displayResults.size() + " matching sites");
             }
             mBtnShowOnMap.setVisibility(View.VISIBLE);
             mBtnShowOnMap.setText("Show on Map");

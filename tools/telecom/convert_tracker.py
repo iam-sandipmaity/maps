@@ -75,10 +75,10 @@ def convert_xlsx_to_csv(xlsx_path, output_csv_path):
     print(f"Successfully generated {output_csv_path} ({len(records)} records).")
 
 if __name__ == '__main__':
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    default_in = os.path.join(base_dir, "INFRA TRACKER.xlsx")
-    default_out = os.path.join(base_dir, "android", "app", "src", "main", "assets", "telecom", "infra_tracker_demo.csv")
+    if len(sys.argv) < 3:
+        print("Usage: python convert_tracker.py <input_excel_path> <output_csv_path>")
+        sys.exit(1)
 
-    in_path = sys.argv[1] if len(sys.argv) > 1 else default_in
-    out_path = sys.argv[2] if len(sys.argv) > 2 else default_out
+    in_path = sys.argv[1]
+    out_path = sys.argv[2]
     convert_xlsx_to_csv(in_path, out_path)

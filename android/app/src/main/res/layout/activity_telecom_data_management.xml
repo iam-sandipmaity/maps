@@ -20,6 +20,7 @@
   </com.google.android.material.appbar.AppBarLayout>
 
   <ScrollView
+      android:id="@+id/content_scroll"
       android:layout_width="match_parent"
       android:layout_height="match_parent">
 
@@ -162,14 +163,6 @@
               android:layout_height="wrap_content"
               android:layout_marginTop="12dp"
               android:text="Select CSV or Excel (.xlsx) File" />
-
-          <Button
-              android:id="@+id/btn_load_demo_data"
-              style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-              android:layout_width="match_parent"
-              android:layout_height="wrap_content"
-              android:layout_marginTop="8dp"
-              android:text="Load Demo Dataset (Infra Tracker)" />
 
         </LinearLayout>
 

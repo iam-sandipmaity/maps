@@ -23,6 +23,7 @@
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:orientation="horizontal"
+      android:gravity="center_vertical"
       android:padding="8dp">
 
     <com.google.android.material.textfield.TextInputLayout
@@ -40,6 +41,54 @@
           android:imeOptions="actionSearch" />
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <ImageButton
+        android:id="@+id/btn_toggle_filters"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="6dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Filters"
+        android:src="@drawable/ic_filter_list"
+        app:tint="?attr/colorAccent" />
+
+  </LinearLayout>
+
+  <!-- Expandable Filter Bar (JC / Technician) -->
+  <LinearLayout
+      android:id="@+id/layout_advanced_filters"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:visibility="gone"
+      android:paddingHorizontal="8dp"
+      android:paddingBottom="6dp">
+
+    <com.google.android.material.chip.Chip
+        android:id="@+id/chip_filter_jc"
+        style="@style/Widget.MaterialComponents.Chip.Action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        app:closeIconVisible="false"
+        android:text="JC: All" />
+
+    <com.google.android.material.chip.Chip
+        android:id="@+id/chip_filter_tech"
+        style="@style/Widget.MaterialComponents.Chip.Action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        app:closeIconVisible="false"
+        android:text="Tech: All" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_reset_filters"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Reset"
+        android:visibility="gone" />
 
   </LinearLayout>
 

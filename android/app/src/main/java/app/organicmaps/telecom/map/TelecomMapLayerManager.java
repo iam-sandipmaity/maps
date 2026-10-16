@@ -186,10 +186,6 @@ public class TelecomMapLayerManager {
     new Thread(() -> {
       try {
         TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(context);
-        if (db.getSitesCount() == 0) {
-          db.ensureBundledDataLoaded(context);
-        }
-
         List<TelecomSite> sites = sitesToDisplay != null ? sitesToDisplay : db.getAllSitesWithCoordinates();
         if (sites.isEmpty()) {
           if (listener != null) {
@@ -256,9 +252,6 @@ public class TelecomMapLayerManager {
                                                 @Nullable OnSyncCompleteListener listener) {
     new Thread(() -> {
       TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(context);
-      if (db.getSitesCount() == 0) {
-        db.ensureBundledDataLoaded(context);
-      }
       List<TelecomSite> sites = db.getSitesWithinRadius(centerLat, centerLon, radiusMeters);
       syncSitesToMap(context, sites, listener);
     }).start();

@@ -840,37 +840,6 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
     return getSitesWithinRadius(centerLat, centerLon, radiusMeters, -1);
   }
 
-  /**
-   * Ensures that bundled telecom records are loaded into SQLite if the database is currently empty.
-   */
-  public synchronized boolean ensureBundledDataLoaded(@NonNull Context context) {
-    if (getSitesCount() > 0) {
-      return false; // Already has data
-    }
-
-    try (InputStream is = context.getAssets().open("telecom/infra_tracker_demo.csv")) {
-      List<List<String>> rows = CsvParser.parse(is);
-      if (rows.isEmpty()) {
-        return false;
-      }
-
-      List<String> headers = rows.get(0);
-      ColumnMapper mapper = ColumnMapper.autoDetectMapping(headers);
-
-      List<TelecomSite> parsedSites = new ArrayList<>();
-      for (int i = 1; i < rows.size(); i++) {
-        TelecomSite site = mapper.mapRow(rows.get(i), i + 1, null);
-        if (site != null) {
-          parsedSites.add(site);
-        }
-      }
-
-      insertBatch(parsedSites, ImportMode.ADD_NEW);
-      return true;
-    } catch (Exception e) {
-      return false;
-    }
-  }
 
   // Visit Plan Operations
   public void saveVisitPlan(@NonNull List<TelecomSite> sites) {
@@ -936,5 +905,29 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
     boolean inPlan = c.moveToFirst();
     c.close();
     return inPlan;
+  }
+
+  @NonNull
+  public List<String> getAllDistinctJcNames() {
+    List<String> list = new ArrayList<>();
+    SQLiteDatabase db = getReadableDatabase();
+    Cursor c = db.rawQuery("SELECT DISTINCT " + COL_LOCATION + " FROM " + TABLE_SITES + " WHERE " + COL_LOCATION + " IS NOT NULL AND TRIM(" + COL_LOCATION + ") != '' ORDER BY " + COL_LOCATION + " ASC", null);
+    while (c.moveToNext()) {
+      list.add(c.getString(0).trim());
+    }
+    c.close();
+    return list;
+  }
+
+  @NonNull
+  public List<String> getAllDistinctTechnicians() {
+    List<String> list = new ArrayList<>();
+    SQLiteDatabase db = getReadableDatabase();
+    Cursor c = db.rawQuery("SELECT DISTINCT " + COL_TECH_NAME + " FROM " + TABLE_SITES + " WHERE " + COL_TECH_NAME + " IS NOT NULL AND TRIM(" + COL_TECH_NAME + ") != '' ORDER BY " + COL_TECH_NAME + " ASC", null);
+    while (c.moveToNext()) {
+      list.add(c.getString(0).trim());
+    }
+    c.close();
+    return list;
   }
 }
