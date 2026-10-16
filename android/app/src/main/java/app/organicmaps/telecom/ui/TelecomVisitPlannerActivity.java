@@ -132,10 +132,7 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
           .setTitle("Navigate to Next Site: " + nextStop.getSiteId())
           .setItems(navOptions, (dialog, which) -> {
             if (which == 0) {
-              ExternalNavigationHelper.showRouteInCoMaps(this, mPlannerManager.getStartLat(),
-                  mPlannerManager.getStartLon(), mPlannerManager.getStartLabel(),
-                  mPlannerManager.isStartFromGps(), java.util.Collections.singletonList(nextStop),
-                  false, 0, 0, "");
+              ExternalNavigationHelper.navigateInCoMaps(this, nextStop);
             } else if (which == 1) {
               ExternalNavigationHelper.openInGoogleMaps(this, nextStop, true);
             } else {
@@ -385,8 +382,19 @@ public class TelecomVisitPlannerActivity extends AppCompatActivity {
         .setTitle("Show Route in Map")
         .setItems(options, (dialog, which) -> {
           if (which == 0) {
+            android.app.ProgressDialog progress = new android.app.ProgressDialog(this);
+            progress.setMessage("Loading visit route on map...");
+            progress.setCancelable(false);
+            progress.show();
+
             ExternalNavigationHelper.showRouteInCoMaps(this, startLat, startLon, startLabel, isStartFromGps,
-                sites, hasReturn, returnLat, returnLon, returnLabel);
+                sites, hasReturn, returnLat, returnLon, returnLabel, () -> {
+                  try {
+                    if (progress.isShowing()) {
+                      progress.dismiss();
+                    }
+                  } catch (Exception ignored) {}
+                });
           } else if (which == 1) {
             ExternalNavigationHelper.openMultiStopInGoogleMaps(this, startLat, startLon, sites,
                 hasReturn, returnLat, returnLon);

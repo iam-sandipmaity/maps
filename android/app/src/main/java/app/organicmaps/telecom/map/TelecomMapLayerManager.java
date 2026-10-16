@@ -268,7 +268,8 @@ public class TelecomMapLayerManager {
                                              boolean hasReturn,
                                              double returnLat,
                                              double returnLon,
-                                             @NonNull String returnLabel) {
+                                             @NonNull String returnLabel,
+                                             @Nullable OnSyncCompleteListener listener) {
     new Thread(() -> {
       try {
         File cacheDir = context.getCacheDir();
@@ -276,26 +277,58 @@ public class TelecomMapLayerManager {
         generateRouteKml(startLat, startLon, startLabel, stops, hasReturn, returnLat, returnLon, returnLabel, routeKmlFile);
 
         UiThread.run(() -> {
-          purgeExistingRouteCategories();
+          try {
+            purgeExistingRouteCategories();
 
-          BookmarkManager.BookmarksLoadingListener loadingListener = new BookmarkManager.BookmarksLoadingListener() {
-            @Override
-            public void onBookmarksLoadingFinished() {
-              BookmarkManager.INSTANCE.removeLoadingListener(this);
-              long newRouteCatId = getRouteCategoryId();
-              if (newRouteCatId != -1) {
-                BookmarkManager.INSTANCE.setVisibility(newRouteCatId, true);
+            BookmarkManager.BookmarksLoadingListener loadingListener = new BookmarkManager.BookmarksLoadingListener() {
+              @Override
+              public void onBookmarksLoadingFinished() {
+                BookmarkManager.INSTANCE.removeLoadingListener(this);
+                long newRouteCatId = getRouteCategoryId();
+                if (newRouteCatId != -1) {
+                  BookmarkManager.INSTANCE.setVisibility(newRouteCatId, true);
+                }
+                if (listener != null) {
+                  listener.onSyncComplete(true, stops.size());
+                }
               }
-            }
-          };
 
-          BookmarkManager.INSTANCE.addLoadingListener(loadingListener);
-          BookmarkManager.INSTANCE.loadBookmarksFile(routeKmlFile.getAbsolutePath(), true);
+              @Override
+              public void onBookmarksFileImportFailed() {
+                BookmarkManager.INSTANCE.removeLoadingListener(this);
+                if (listener != null) {
+                  listener.onSyncComplete(false, 0);
+                }
+              }
+            };
+
+            BookmarkManager.INSTANCE.addLoadingListener(loadingListener);
+            BookmarkManager.INSTANCE.loadBookmarksFile(routeKmlFile.getAbsolutePath(), true);
+          } catch (Exception e) {
+            if (listener != null) {
+              listener.onSyncComplete(false, 0);
+            }
+          }
         });
-      } catch (Exception ignored) {
+      } catch (Exception e) {
+        if (listener != null) {
+          UiThread.run(() -> listener.onSyncComplete(false, 0));
+        }
       }
     }).start();
     return true;
+  }
+
+  public synchronized boolean syncRouteToMap(@NonNull Context context,
+                                             double startLat,
+                                             double startLon,
+                                             @NonNull String startLabel,
+                                             @NonNull List<TelecomSite> stops,
+                                             boolean hasReturn,
+                                             double returnLat,
+                                             double returnLon,
+                                             @NonNull String returnLabel) {
+    return syncRouteToMap(context, startLat, startLon, startLabel, stops, hasReturn, returnLat, returnLon, returnLabel, null);
   }
 
   public synchronized boolean syncRouteToMap(@NonNull Context context,
@@ -455,6 +488,37 @@ public class TelecomMapLayerManager {
         writer.write("      <Point>\n");
         writer.write(String.format(java.util.Locale.US, "        <coordinates>%.6f,%.6f,0</coordinates>\n", returnLon, returnLat));
         writer.write("      </Point>\n");
+        writer.write("    </Placemark>\n");
+      }
+
+      // Route path line connecting start, stops, and return
+      List<String> linePoints = new ArrayList<>();
+      if (startLat != 0.0 || startLon != 0.0) {
+        linePoints.add(String.format(java.util.Locale.US, "%.6f,%.6f,0", startLon, startLat));
+      }
+      for (TelecomSite s : stops) {
+        if (s.hasValidCoords()) {
+          linePoints.add(String.format(java.util.Locale.US, "%.6f,%.6f,0", s.getLongitude(), s.getLatitude()));
+        }
+      }
+      if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
+        linePoints.add(String.format(java.util.Locale.US, "%.6f,%.6f,0", returnLon, returnLat));
+      }
+
+      if (linePoints.size() >= 2) {
+        writer.write("    <Placemark>\n");
+        writer.write("      <name>Planned Route Path</name>\n");
+        writer.write("      <visibility>1</visibility>\n");
+        writer.write("      <ExtendedData xmlns:mwm=\"https://comaps.app\">\n");
+        writer.write("        <mwm:visibility>1</mwm:visibility>\n");
+        writer.write("      </ExtendedData>\n");
+        writer.write("      <LineString>\n");
+        writer.write("        <coordinates>\n");
+        for (String pt : linePoints) {
+          writer.write("          " + pt + "\n");
+        }
+        writer.write("        </coordinates>\n");
+        writer.write("      </LineString>\n");
         writer.write("    </Placemark>\n");
       }
 

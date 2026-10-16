@@ -135,24 +135,19 @@ public class ExternalNavigationHelper {
       return;
     }
     try {
-      RoutingController.get().cancel();
-      Framework.nativeCloseRouting();
-      Framework.nativeRemoveRoutePoints();
-
-      MapObject endPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, site.getSiteId(), "", site.getLatitude(), site.getLongitude());
-      Framework.addRoutePoint(new RouteMarkData(endPoint.getTitle(), endPoint.getSubtitle(),
-          RouteMarkType.Finish, 0, true, false, false, site.getLatitude(), site.getLongitude()));
-
       MapObject gpsPos = MwmApplication.from(context).getLocationHelper().getMyPosition();
-      if (gpsPos != null) {
-        Framework.addRoutePoint(new RouteMarkData(gpsPos.getTitle(), gpsPos.getSubtitle(),
-            RouteMarkType.Start, 0, false, true, false, gpsPos.getLat(), gpsPos.getLon()));
-      }
-
-      RoutingController.get().launchPlanning();
-
       Intent intent = new Intent(context, MwmActivity.class);
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      if (gpsPos != null) {
+        String uriStr = String.format(Locale.US,
+            "om://route?sll=%.6f,%.6f&saddr=%s&dll=%.6f,%.6f&daddr=%s&type=vehicle",
+            gpsPos.getLat(), gpsPos.getLon(), Uri.encode("My Location"),
+            site.getLatitude(), site.getLongitude(), Uri.encode(site.getSiteId()));
+        intent.setData(Uri.parse(uriStr));
+      } else {
+        String uriStr = String.format(Locale.US, "geo:%.6f,%.6f?z=17", site.getLatitude(), site.getLongitude());
+        intent.setData(Uri.parse(uriStr));
+      }
       context.startActivity(intent);
     } catch (Exception e) {
       openInCoMaps(context, site);
@@ -275,94 +270,50 @@ public class ExternalNavigationHelper {
                                        boolean hasReturn,
                                        double returnLat,
                                        double returnLon,
-                                       @NonNull String returnLabel) {
+                                       @NonNull String returnLabel,
+                                       @Nullable Runnable onComplete) {
     if (stops.isEmpty()) {
       showToast(context, "No stops in visit plan");
+      if (onComplete != null) onComplete.run();
       return;
     }
 
-    // 1. Sync numbered placemarks into CoMaps map layer (all stops [1]..[N] + return are always visible)
+    // Sync numbered placemarks and route track into CoMaps map layer
     TelecomMapLayerManager.getInstance().syncRouteToMap(context, startLat, startLon, startLabel, stops,
-        hasReturn, returnLat, returnLon, returnLabel);
+        hasReturn, returnLat, returnLon, returnLabel, (success, count) -> {
+          if (onComplete != null) {
+            onComplete.run();
+          }
 
-    // 2. Prepare native turn-by-turn routing controller using batch method
-    try {
-      double originLat = (startLat != 0.0 || startLon != 0.0) ? startLat : stops.get(0).getLatitude();
-      double originLon = (startLat != 0.0 || startLon != 0.0) ? startLon : stops.get(0).getLongitude();
+          try {
+            long catId = TelecomMapLayerManager.getInstance().getRouteCategoryId();
+            Intent intent = new Intent(context, MwmActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (catId != -1) {
+              intent.putExtra(MwmActivity.EXTRA_CATEGORY_ID, catId);
+            } else {
+              double centerLat = (startLat != 0.0) ? startLat : stops.get(0).getLatitude();
+              double centerLon = (startLon != 0.0) ? startLon : stops.get(0).getLongitude();
+              intent.setData(Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?z=13", centerLat, centerLon)));
+            }
+            context.startActivity(intent);
+          } catch (Exception e) {
+            showToast(context, "Error displaying route: " + e.getMessage());
+          }
+        });
+  }
 
-      // If starting from GPS or user location, set MY_POSITION so MwmActivity doesn't ask "Navigation is only available from your current location"
-      boolean isStartMyPos = isStartFromGps || startLabel.startsWith("My Location");
-      MapObject startPoint;
-      if (isStartMyPos) {
-        MapObject gpsPos = MwmApplication.from(context).getLocationHelper().getMyPosition();
-        if (gpsPos != null) {
-          startPoint = gpsPos;
-        } else {
-          startPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.MY_POSITION, "My Position", "", originLat, originLon);
-        }
-      } else {
-        startPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, "Start: " + startLabel, "", originLat, originLon);
-      }
-
-      double destLat;
-      double destLon;
-      String destLabel;
-
-      if (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) {
-        destLat = returnLat;
-        destLon = returnLon;
-        destLabel = "Return: " + returnLabel;
-      } else {
-        TelecomSite lastSite = stops.get(stops.size() - 1);
-        destLat = lastSite.getLatitude();
-        destLon = lastSite.getLongitude();
-        destLabel = lastSite.getSiteId();
-      }
-
-      MapObject endPoint = MapObject.createMapObject(FeatureId.EMPTY, MapObject.API_POINT, destLabel, "", destLat, destLon);
-
-      // Clean existing route marks and cancel previous routing state to prevent stuck errors
-      try {
-        RoutingController.get().cancel();
-        Framework.nativeCloseRouting();
-      } catch (Exception ignored) {}
-      Framework.nativeRemoveRoutePoints();
-
-      // Batch pattern: 1st add destination, 2nd add start, 3rd add intermediates without reordering
-      Framework.addRoutePoint(new RouteMarkData(endPoint.getTitle(), endPoint.getSubtitle(),
-          RouteMarkType.Finish, 0, true, false, false, destLat, destLon));
-
-      Framework.addRoutePoint(new RouteMarkData(startPoint.getTitle(), startPoint.getSubtitle(),
-          RouteMarkType.Start, 0, !isStartMyPos, isStartMyPos, false, originLat, originLon));
-
-      // Intermediate stops:
-      // For offline road networks, adding more than 4 intermediate points at once can cause offline road snapping failure.
-      // We safely add up to 4 intermediate points for active navigation, while all stops are displayed on the map layer.
-      int endIndex = (hasReturn && (returnLat != 0.0 || returnLon != 0.0)) ? stops.size() : stops.size() - 1;
-      int startIndex = (startLat != 0.0 || startLon != 0.0) ? 0 : 1;
-      int intermediateIndex = 0;
-      for (int i = startIndex; i < endIndex; i++) {
-        TelecomSite s = stops.get(i);
-        if (s.hasValidCoords()) {
-          Framework.addRoutePoint(new RouteMarkData(s.getSiteId(), s.getSiteName(),
-              RouteMarkType.Intermediate, intermediateIndex, true, false, false, s.getLatitude(), s.getLongitude()), false);
-          intermediateIndex++;
-        }
-      }
-
-      // Single planning build call
-      RoutingController.get().launchPlanning();
-    } catch (Exception ignored) {
-      // Placemark layer remains visible even if native routing data is partially available
-    }
-
-    // 3. Launch MwmActivity centered on starting point or first stop
-    double centerLat = (startLat != 0.0) ? startLat : stops.get(0).getLatitude();
-    double centerLon = (startLon != 0.0) ? startLon : stops.get(0).getLongitude();
-    Intent intent = new Intent(context, MwmActivity.class);
-    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-    intent.setData(Uri.parse(String.format(Locale.US, "geo:%.6f,%.6f?z=13", centerLat, centerLon)));
-    context.startActivity(intent);
+  public static void showRouteInCoMaps(@NonNull Context context,
+                                       double startLat,
+                                       double startLon,
+                                       @NonNull String startLabel,
+                                       boolean isStartFromGps,
+                                       @NonNull List<TelecomSite> stops,
+                                       boolean hasReturn,
+                                       double returnLat,
+                                       double returnLon,
+                                       @NonNull String returnLabel) {
+    showRouteInCoMaps(context, startLat, startLon, startLabel, isStartFromGps, stops, hasReturn, returnLat, returnLon, returnLabel, null);
   }
 
   public static void showRouteInCoMaps(@NonNull Context context,
@@ -371,7 +322,7 @@ public class ExternalNavigationHelper {
                                        @NonNull String startLabel,
                                        @NonNull List<TelecomSite> stops,
                                        boolean returnToStart) {
-    showRouteInCoMaps(context, startLat, startLon, startLabel, false, stops, returnToStart, startLat, startLon, startLabel);
+    showRouteInCoMaps(context, startLat, startLon, startLabel, false, stops, returnToStart, startLat, startLon, startLabel, null);
   }
 
   /**
