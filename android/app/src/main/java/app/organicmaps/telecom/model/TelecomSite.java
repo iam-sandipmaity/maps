@@ -844,6 +844,31 @@ public class TelecomSite implements Serializable, Parcelable {
     return String.format(java.util.Locale.US, "%.6f, %.6f", latitude, longitude);
   }
 
+  private double distanceMeters = -1.0;
+
+  public double getDistanceMeters() {
+    return distanceMeters;
+  }
+
+  public void setDistanceMeters(double distanceMeters) {
+    this.distanceMeters = distanceMeters;
+  }
+
+  public boolean hasDistance() {
+    return distanceMeters >= 0;
+  }
+
+  @NonNull
+  public String getFormattedDistance() {
+    if (distanceMeters < 0) {
+      return "";
+    }
+    if (distanceMeters < 1000) {
+      return Math.round(distanceMeters) + " m";
+    }
+    return String.format(java.util.Locale.US, "%.1f km", distanceMeters / 1000.0);
+  }
+
   @Override
   public String toString() {
     return siteId + (siteName.isEmpty() ? "" : " - " + siteName);

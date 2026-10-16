@@ -1,27 +1,39 @@
 package app.organicmaps.telecom.ui;
 
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import app.organicmaps.MwmApplication;
 import app.organicmaps.R;
+import app.organicmaps.sdk.bookmarks.data.MapObject;
 import app.organicmaps.telecom.db.TelecomDatabaseHelper;
+import app.organicmaps.telecom.map.TelecomMapLayerManager;
 import app.organicmaps.telecom.model.TelecomSite;
 import app.organicmaps.telecom.navigation.ExternalNavigationHelper;
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.textfield.TextInputEditText;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,8 +43,10 @@ public class TelecomSearchActivity extends AppCompatActivity {
   public static final String EXTRA_INITIAL_QUERY = "extra_initial_query";
 
   private TextInputEditText mEtSearch;
+  private ChipGroup mCgRadius;
   private RecyclerView mRvResults;
   private TextView mTvResultCount;
+  private MaterialButton mBtnShowOnMap;
   private TextView mTvEmpty;
   private SearchAdapter mAdapter;
 
@@ -45,6 +59,10 @@ public class TelecomSearchActivity extends AppCompatActivity {
   private String mCurrentQuery = "";
   private boolean mIsLoading = false;
   private boolean mHasMore = true;
+
+  // Selected radius in meters: -1 means All Sites (no radius restriction)
+  private double mSelectedRadiusMeters = -1.0;
+  private String mCustomRadiusLabel = "Custom...";
 
   public static void start(@NonNull Context context, @Nullable String initialQuery) {
     Intent intent = new Intent(context, TelecomSearchActivity.class);
@@ -67,8 +85,10 @@ public class TelecomSearchActivity extends AppCompatActivity {
     toolbar.setNavigationOnClickListener(v -> finish());
 
     mEtSearch = findViewById(R.id.et_search);
+    mCgRadius = findViewById(R.id.cg_radius);
     mRvResults = findViewById(R.id.rv_results);
     mTvResultCount = findViewById(R.id.tv_result_count);
+    mBtnShowOnMap = findViewById(R.id.btn_show_on_map);
     mTvEmpty = findViewById(R.id.tv_empty);
 
     mAdapter = new SearchAdapter();
@@ -80,7 +100,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
       @Override
       public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
         if (dy <= 0) return;
-        if (mHasMore && !mIsLoading) {
+        if (mHasMore && !mIsLoading && mSelectedRadiusMeters <= 0.0) {
           int visibleItemCount = layoutManager.getChildCount();
           int totalItemCount = layoutManager.getItemCount();
           int firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition();
@@ -108,12 +128,118 @@ public class TelecomSearchActivity extends AppCompatActivity {
       public void afterTextChanged(Editable s) {}
     });
 
+    setupRadiusFilterChips();
+
+    mBtnShowOnMap.setOnClickListener(v -> showCurrentSitesOnMap());
+
     String initialQuery = getIntent().getStringExtra(EXTRA_INITIAL_QUERY);
     if (initialQuery != null && !initialQuery.isEmpty()) {
       mEtSearch.setText(initialQuery);
     } else {
       resetAndSearch("");
     }
+  }
+
+  private void setupRadiusFilterChips() {
+    mCgRadius.setOnCheckedStateChangeListener((group, checkedIds) -> {
+      if (checkedIds.isEmpty()) return;
+      int checkedId = checkedIds.get(0);
+
+      if (checkedId == R.id.chip_all) {
+        mSelectedRadiusMeters = -1.0;
+        resetAndSearch(mCurrentQuery);
+      } else if (checkedId == R.id.chip_100m) {
+        mSelectedRadiusMeters = 100.0;
+        resetAndSearch(mCurrentQuery);
+      } else if (checkedId == R.id.chip_500m) {
+        mSelectedRadiusMeters = 500.0;
+        resetAndSearch(mCurrentQuery);
+      } else if (checkedId == R.id.chip_1km) {
+        mSelectedRadiusMeters = 1000.0;
+        resetAndSearch(mCurrentQuery);
+      } else if (checkedId == R.id.chip_5km) {
+        mSelectedRadiusMeters = 5000.0;
+        resetAndSearch(mCurrentQuery);
+      } else if (checkedId == R.id.chip_10km) {
+        mSelectedRadiusMeters = 10000.0;
+        resetAndSearch(mCurrentQuery);
+      } else if (checkedId == R.id.chip_custom) {
+        promptCustomRadius();
+      }
+    });
+  }
+
+  private void promptCustomRadius() {
+    AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    builder.setTitle("Set Custom Radius");
+    builder.setMessage("Enter radius in meters (e.g. 250) or kilometers (e.g. 15 km):");
+
+    final EditText input = new EditText(this);
+    input.setInputType(InputType.TYPE_CLASS_TEXT);
+    input.setHint("e.g. 250m or 15km");
+    builder.setView(input);
+
+    builder.setPositiveButton("Apply", (dialog, which) -> {
+      String text = input.getText().toString().trim().toLowerCase();
+      double meters = parseRadiusStringToMeters(text);
+      if (meters > 0) {
+        mSelectedRadiusMeters = meters;
+        Chip customChip = findViewById(R.id.chip_custom);
+        if (customChip != null) {
+          mCustomRadiusLabel = meters < 1000 ? "< " + Math.round(meters) + " m" : "< " + String.format(java.util.Locale.US, "%.1f km", meters / 1000.0);
+          customChip.setText(mCustomRadiusLabel);
+        }
+        resetAndSearch(mCurrentQuery);
+      } else {
+        Toast.makeText(this, "Invalid radius value entered", Toast.LENGTH_SHORT).show();
+        mCgRadius.check(R.id.chip_all);
+      }
+    });
+
+    builder.setNegativeButton("Cancel", (dialog, which) -> {
+      if (mSelectedRadiusMeters <= 0) {
+        mCgRadius.check(R.id.chip_all);
+      }
+    });
+
+    builder.show();
+  }
+
+  private double parseRadiusStringToMeters(String text) {
+    if (text == null || text.isEmpty()) return -1.0;
+    try {
+      if (text.endsWith("km")) {
+        double val = Double.parseDouble(text.replace("km", "").trim());
+        return val * 1000.0;
+      } else if (text.endsWith("m")) {
+        return Double.parseDouble(text.replace("m", "").trim());
+      } else {
+        // default to meters if < 100, or km if float like 2.5
+        double val = Double.parseDouble(text.trim());
+        if (val < 50.0 && text.contains(".")) {
+          return val * 1000.0;
+        }
+        return val;
+      }
+    } catch (Exception e) {
+      return -1.0;
+    }
+  }
+
+  @Nullable
+  private double[] getCurrentLocation() {
+    try {
+      MapObject myPos = MwmApplication.from(this).getLocationHelper().getMyPosition();
+      if (myPos != null && (myPos.getLat() != 0.0 || myPos.getLon() != 0.0)) {
+        return new double[]{myPos.getLat(), myPos.getLon()};
+      }
+      Location saved = MwmApplication.from(this).getLocationHelper().getSavedLocation();
+      if (saved != null && (saved.getLatitude() != 0.0 || saved.getLongitude() != 0.0)) {
+        return new double[]{saved.getLatitude(), saved.getLongitude()};
+      }
+    } catch (Exception ignored) {
+    }
+    return null;
   }
 
   private void resetAndSearch(@NonNull String query) {
@@ -124,37 +250,143 @@ public class TelecomSearchActivity extends AppCompatActivity {
 
     new Thread(() -> {
       TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
-      mTotalCount = db.countSites(query);
-      List<TelecomSite> results = db.searchSites(query, PAGE_SIZE, 0);
-      runOnUiThread(() -> {
-        mIsLoading = false;
-        mCurrentOffset = results.size();
-        mHasMore = results.size() >= PAGE_SIZE && mCurrentOffset < mTotalCount;
-        mAdapter.setSites(results);
-        if (results.isEmpty()) {
-          mTvEmpty.setVisibility(View.VISIBLE);
-          mTvResultCount.setVisibility(View.GONE);
+      if (db.getSitesCount() == 0) {
+        db.ensureBundledDataLoaded(this);
+      }
+
+      double[] loc = getCurrentLocation();
+
+      if (mSelectedRadiusMeters > 0.0) {
+        // Radius-based search around GPS location
+        if (loc == null) {
+          runOnUiThread(() -> {
+            mIsLoading = false;
+            mAdapter.setSites(new ArrayList<>());
+            mTvEmpty.setVisibility(View.VISIBLE);
+            mTvEmpty.setText("GPS location unavailable.\nPlease enable location services or turn on GPS to filter sites by radius.");
+            mTvResultCount.setVisibility(View.GONE);
+            mBtnShowOnMap.setVisibility(View.GONE);
+          });
+          return;
+        }
+
+        List<TelecomSite> withinRadius = db.getSitesWithinRadius(loc[0], loc[1], mSelectedRadiusMeters);
+
+        // If text query is present, filter within radius
+        List<TelecomSite> filtered = new ArrayList<>();
+        if (!query.trim().isEmpty()) {
+          List<String> tokens = TelecomDatabaseHelper.extractSearchTokens(query);
+          for (TelecomSite s : withinRadius) {
+            if (matchesTokens(s, tokens)) {
+              filtered.add(s);
+            }
+          }
         } else {
-          mTvEmpty.setVisibility(View.GONE);
-          mTvResultCount.setVisibility(View.VISIBLE);
-          if (mTotalCount > results.size()) {
-            mTvResultCount.setText("Showing " + results.size() + " of " + mTotalCount + " sites (scroll for more)");
+          filtered = withinRadius;
+        }
+
+        final List<TelecomSite> finalResults = filtered;
+        final String radiusDesc = mSelectedRadiusMeters < 1000
+            ? Math.round(mSelectedRadiusMeters) + " m"
+            : String.format(java.util.Locale.US, "%.1f km", mSelectedRadiusMeters / 1000.0);
+
+        runOnUiThread(() -> {
+          mIsLoading = false;
+          mCurrentOffset = finalResults.size();
+          mHasMore = false;
+          mAdapter.setSites(finalResults);
+
+          if (finalResults.isEmpty()) {
+            mTvEmpty.setVisibility(View.VISIBLE);
+            mTvEmpty.setText("No telecom sites found within " + radiusDesc + " of your current location.");
+            mTvResultCount.setVisibility(View.GONE);
+            mBtnShowOnMap.setVisibility(View.GONE);
           } else {
-            mTvResultCount.setText("Found " + results.size() + " matching sites");
+            mTvEmpty.setVisibility(View.GONE);
+            mTvResultCount.setVisibility(View.VISIBLE);
+            mTvResultCount.setText("Found " + finalResults.size() + " sites within " + radiusDesc);
+            mBtnShowOnMap.setVisibility(View.VISIBLE);
+            mBtnShowOnMap.setText("Show on Map (" + finalResults.size() + ")");
+          }
+        });
+
+      } else {
+        // Standard search across all sites
+        mTotalCount = db.countSites(query);
+        List<TelecomSite> results = db.searchSites(query, PAGE_SIZE, 0);
+
+        // Populate distance if location is available
+        if (loc != null) {
+          for (TelecomSite site : results) {
+            if (site.hasValidCoords()) {
+              double d = TelecomDatabaseHelper.calculateDistanceMeters(loc[0], loc[1], site.getLatitude(), site.getLongitude());
+              site.setDistanceMeters(d);
+            }
           }
         }
-      });
+
+        runOnUiThread(() -> {
+          mIsLoading = false;
+          mCurrentOffset = results.size();
+          mHasMore = results.size() >= PAGE_SIZE && mCurrentOffset < mTotalCount;
+          mAdapter.setSites(results);
+
+          if (results.isEmpty()) {
+            mTvEmpty.setVisibility(View.VISIBLE);
+            mTvEmpty.setText("No matching telecom sites found.\nTry searching Site ID, location, or technician.");
+            mTvResultCount.setVisibility(View.GONE);
+            mBtnShowOnMap.setVisibility(View.GONE);
+          } else {
+            mTvEmpty.setVisibility(View.GONE);
+            mTvResultCount.setVisibility(View.VISIBLE);
+            if (mTotalCount > results.size()) {
+              mTvResultCount.setText("Showing " + results.size() + " of " + mTotalCount + " sites (scroll for more)");
+            } else {
+              mTvResultCount.setText("Found " + results.size() + " matching sites");
+            }
+            mBtnShowOnMap.setVisibility(View.VISIBLE);
+            mBtnShowOnMap.setText("Show on Map");
+          }
+        });
+      }
     }).start();
   }
 
+  private boolean matchesTokens(TelecomSite site, List<String> tokens) {
+    if (tokens.isEmpty()) return true;
+    String id = site.getSiteId().toLowerCase();
+    String name = site.getSiteName().toLowerCase();
+    String loc = site.getLocation().toLowerCase();
+    String tech = site.getTechnicianName().toLowerCase();
+
+    for (String token : tokens) {
+      String t = token.toLowerCase();
+      if (!id.contains(t) && !name.contains(t) && !loc.contains(t) && !tech.contains(t)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private void loadNextPage() {
-    if (mIsLoading || !mHasMore) return;
+    if (mIsLoading || !mHasMore || mSelectedRadiusMeters > 0.0) return;
     mIsLoading = true;
     final int offset = mCurrentOffset;
 
     new Thread(() -> {
       TelecomDatabaseHelper db = TelecomDatabaseHelper.getInstance(this);
       List<TelecomSite> nextBatch = db.searchSites(mCurrentQuery, PAGE_SIZE, offset);
+
+      double[] loc = getCurrentLocation();
+      if (loc != null) {
+        for (TelecomSite site : nextBatch) {
+          if (site.hasValidCoords()) {
+            double d = TelecomDatabaseHelper.calculateDistanceMeters(loc[0], loc[1], site.getLatitude(), site.getLongitude());
+            site.setDistanceMeters(d);
+          }
+        }
+      }
+
       runOnUiThread(() -> {
         mIsLoading = false;
         if (nextBatch.isEmpty()) {
@@ -167,6 +399,37 @@ public class TelecomSearchActivity extends AppCompatActivity {
         mTvResultCount.setText("Showing " + mAdapter.getItemCount() + " of " + mTotalCount + " sites");
       });
     }).start();
+  }
+
+  private void showCurrentSitesOnMap() {
+    List<TelecomSite> sites = mAdapter.getSites();
+    if (sites.isEmpty()) {
+      Toast.makeText(this, "No sites to display on map", Toast.LENGTH_SHORT).show();
+      return;
+    }
+
+    ProgressDialog pd = new ProgressDialog(this);
+    pd.setMessage("Displaying " + sites.size() + " site markers on map...");
+    pd.setCancelable(false);
+    pd.show();
+
+    TelecomMapLayerManager.getInstance().syncSitesToMap(this, sites, (success, count) -> {
+      runOnUiThread(() -> {
+        pd.dismiss();
+        if (success) {
+          Toast.makeText(this, count + " site markers placed on map", Toast.LENGTH_SHORT).show();
+          // Find first site with valid coords to focus the map
+          for (TelecomSite s : sites) {
+            if (s.hasValidCoords()) {
+              ExternalNavigationHelper.openInCoMaps(this, s);
+              return;
+            }
+          }
+        } else {
+          Toast.makeText(this, "Failed to sync markers to map", Toast.LENGTH_SHORT).show();
+        }
+      });
+    });
   }
 
   private class SearchAdapter extends RecyclerView.Adapter<SearchViewHolder> {
@@ -188,6 +451,10 @@ public class TelecomSearchActivity extends AppCompatActivity {
       }
     }
 
+    public List<TelecomSite> getSites() {
+      return new ArrayList<>(mSites);
+    }
+
     @NonNull
     @Override
     public SearchViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -201,6 +468,13 @@ public class TelecomSearchActivity extends AppCompatActivity {
       holder.tvSiteId.setText(site.getSiteId());
       holder.tvSiteType.setText(site.getSiteType().isEmpty() ? "SITE" : site.getSiteType());
       holder.tvSiteName.setText(site.getSiteName().isEmpty() ? "(No Site Name)" : site.getSiteName());
+
+      if (site.hasDistance()) {
+        holder.tvDistance.setVisibility(View.VISIBLE);
+        holder.tvDistance.setText(site.getFormattedDistance());
+      } else {
+        holder.tvDistance.setVisibility(View.GONE);
+      }
 
       StringBuilder locTech = new StringBuilder();
       if (!site.getLocation().isEmpty()) {
@@ -235,6 +509,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
   private static class SearchViewHolder extends RecyclerView.ViewHolder {
     TextView tvSiteId;
     TextView tvSiteType;
+    TextView tvDistance;
     TextView tvSiteName;
     TextView tvLocationTech;
     TextView tvCoordinates;
@@ -245,6 +520,7 @@ public class TelecomSearchActivity extends AppCompatActivity {
       super(itemView);
       tvSiteId = itemView.findViewById(R.id.tv_site_id);
       tvSiteType = itemView.findViewById(R.id.tv_site_type);
+      tvDistance = itemView.findViewById(R.id.tv_distance);
       tvSiteName = itemView.findViewById(R.id.tv_site_name);
       tvLocationTech = itemView.findViewById(R.id.tv_location_tech);
       tvCoordinates = itemView.findViewById(R.id.tv_coordinates);
@@ -253,3 +529,4 @@ public class TelecomSearchActivity extends AppCompatActivity {
     }
   }
 }
+

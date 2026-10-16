@@ -7,8 +7,13 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import app.organicmaps.telecom.importer.ColumnMapper;
+import app.organicmaps.telecom.importer.CsvParser;
 import app.organicmaps.telecom.model.TelecomSite;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -750,6 +755,121 @@ public class TelecomDatabaseHelper extends SQLiteOpenHelper {
     SQLiteDatabase db = getWritableDatabase();
     db.delete(TABLE_VISIT_PLAN, null, null);
     db.delete(TABLE_SITES, null, null);
+  }
+
+  /**
+   * Calculates the great-circle distance between two geographic coordinates using the Haversine formula.
+   *
+   * @return Distance in meters.
+   */
+  public static double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
+    final double R = 6371000.0; // Earth radius in meters
+    double dLat = Math.toRadians(lat2 - lat1);
+    double dLon = Math.toRadians(lon2 - lon1);
+    double a = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0)
+        + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+        * Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0);
+    double c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a));
+    return R * c;
+  }
+
+  /**
+   * Queries sites within a given radius (in meters) from a center coordinate.
+   * Utilizes indexed SQLite bounding box pre-filtering followed by exact Haversine distance computation.
+   *
+   * @param centerLat Center latitude.
+   * @param centerLon Center longitude.
+   * @param radiusMeters Maximum distance in meters.
+   * @param limit Maximum results to return (<= 0 for unlimited).
+   * @return List of TelecomSite objects sorted in ascending order of distance (nearest first).
+   */
+  @NonNull
+  public List<TelecomSite> getSitesWithinRadius(double centerLat, double centerLon, double radiusMeters, int limit) {
+    List<TelecomSite> results = new ArrayList<>();
+    if (radiusMeters <= 0.0) {
+      return results;
+    }
+
+    // Rough bounding box: 1 deg lat ~ 111.32 km
+    double latDelta = radiusMeters / 111320.0;
+    double latMin = centerLat - latDelta;
+    double latMax = centerLat + latDelta;
+    double cosLat = Math.cos(Math.toRadians(centerLat));
+    double lonDelta = (cosLat > 0.0001) ? (radiusMeters / (111320.0 * cosLat)) : 180.0;
+    double lonMin = centerLon - lonDelta;
+    double lonMax = centerLon + lonDelta;
+
+    SQLiteDatabase db = getReadableDatabase();
+    String selection = COL_HAS_VALID_COORDS + " = 1 AND "
+        + COL_LATITUDE + " >= ? AND " + COL_LATITUDE + " <= ? AND "
+        + COL_LONGITUDE + " >= ? AND " + COL_LONGITUDE + " <= ?";
+    String[] args = new String[] {
+        String.valueOf(latMin),
+        String.valueOf(latMax),
+        String.valueOf(lonMin),
+        String.valueOf(lonMax)
+    };
+
+    Cursor c = db.query(TABLE_SITES, null, selection, args, null, null, null);
+    while (c.moveToNext()) {
+      TelecomSite site = cursorToSite(c);
+      double dist = calculateDistanceMeters(centerLat, centerLon, site.getLatitude(), site.getLongitude());
+      if (dist <= radiusMeters) {
+        site.setDistanceMeters(dist);
+        results.add(site);
+      }
+    }
+    c.close();
+
+    // Sort ascending: nearest first
+    Collections.sort(results, new Comparator<TelecomSite>() {
+      @Override
+      public int compare(TelecomSite o1, TelecomSite o2) {
+        return Double.compare(o1.getDistanceMeters(), o2.getDistanceMeters());
+      }
+    });
+
+    if (limit > 0 && results.size() > limit) {
+      return new ArrayList<>(results.subList(0, limit));
+    }
+    return results;
+  }
+
+  @NonNull
+  public List<TelecomSite> getSitesWithinRadius(double centerLat, double centerLon, double radiusMeters) {
+    return getSitesWithinRadius(centerLat, centerLon, radiusMeters, -1);
+  }
+
+  /**
+   * Ensures that bundled telecom records are loaded into SQLite if the database is currently empty.
+   */
+  public synchronized boolean ensureBundledDataLoaded(@NonNull Context context) {
+    if (getSitesCount() > 0) {
+      return false; // Already has data
+    }
+
+    try (InputStream is = context.getAssets().open("telecom/infra_tracker_demo.csv")) {
+      List<List<String>> rows = CsvParser.parse(is);
+      if (rows.isEmpty()) {
+        return false;
+      }
+
+      List<String> headers = rows.get(0);
+      ColumnMapper mapper = ColumnMapper.autoDetectMapping(headers);
+
+      List<TelecomSite> parsedSites = new ArrayList<>();
+      for (int i = 1; i < rows.size(); i++) {
+        TelecomSite site = mapper.mapRow(rows.get(i), i + 1, null);
+        if (site != null) {
+          parsedSites.add(site);
+        }
+      }
+
+      insertBatch(parsedSites, ImportMode.ADD_NEW);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   // Visit Plan Operations

@@ -305,17 +305,16 @@ public class TelecomDataManagementActivity extends AppCompatActivity {
     progress.setCancelable(false);
     progress.show();
 
-    new Thread(() -> {
-      boolean success = TelecomMapLayerManager.getInstance().syncSitesToMap(this);
+    TelecomMapLayerManager.getInstance().syncSitesToMap(this, null, (success, count) -> {
       runOnUiThread(() -> {
         progress.dismiss();
         if (success) {
-          Toast.makeText(this, "Telecom sites synced to map placemarks successfully", Toast.LENGTH_SHORT).show();
+          Toast.makeText(this, count + " telecom sites synced to map placemarks successfully", Toast.LENGTH_SHORT).show();
         } else {
           Toast.makeText(this, "No valid sites with coordinates found to sync", Toast.LENGTH_SHORT).show();
         }
       });
-    }).start();
+    });
   }
 
   private void exportDatasetToCsv() {

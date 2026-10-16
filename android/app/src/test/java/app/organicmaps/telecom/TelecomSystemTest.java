@@ -373,4 +373,93 @@ public class TelecomSystemTest {
     assertFalse(siteId.matches("(?i).*kolk.*9030.*"));
     assertFalse(siteId.matches("(?i).*kgpo.*9035.*"));
   }
+
+  @Test
+  public void testDistanceCalculationAndFormatting() {
+    // Kharagpur junction reference coords
+    double originLat = 22.345678;
+    double originLon = 87.269636;
+
+    // Site approx 100 meters north
+    double north100mLat = originLat + (100.0 / 111320.0);
+    double dist100 = TelecomDatabaseHelper.calculateDistanceMeters(originLat, originLon, north100mLat, originLon);
+    assertTrue("Distance should be ~100m, was: " + dist100, Math.abs(dist100 - 100.0) < 5.0);
+
+    // Site approx 1 km east
+    double cosLat = Math.cos(Math.toRadians(originLat));
+    double east1kmLon = originLon + (1000.0 / (111320.0 * cosLat));
+    double dist1km = TelecomDatabaseHelper.calculateDistanceMeters(originLat, originLon, originLat, east1kmLon);
+    assertTrue("Distance should be ~1000m, was: " + dist1km, Math.abs(dist1km - 1000.0) < 15.0);
+
+    // Test formatting in TelecomSite
+    TelecomSite site = new TelecomSite("TEST-01");
+    assertEquals("", site.getFormattedDistance());
+
+    site.setDistanceMeters(85.3);
+    assertEquals("85 m", site.getFormattedDistance());
+
+    site.setDistanceMeters(999.4);
+    assertEquals("999 m", site.getFormattedDistance());
+
+    site.setDistanceMeters(1250.0);
+    assertEquals("1.3 km", site.getFormattedDistance());
+
+    site.setDistanceMeters(10400.0);
+    assertEquals("10.4 km", site.getFormattedDistance());
+  }
+
+  @Test
+  public void testRadiusFilteringLogic() {
+    double centerLat = 22.345678;
+    double centerLon = 87.269636;
+
+    TelecomSite s50m = new TelecomSite("SITE-50M");
+    s50m.setCoordinates(centerLat + (50.0 / 111320.0), centerLon);
+
+    TelecomSite s200m = new TelecomSite("SITE-200M");
+    s200m.setCoordinates(centerLat + (200.0 / 111320.0), centerLon);
+
+    TelecomSite s2km = new TelecomSite("SITE-2KM");
+    s2km.setCoordinates(centerLat + (2000.0 / 111320.0), centerLon);
+
+    TelecomSite s15km = new TelecomSite("SITE-15KM");
+    s15km.setCoordinates(centerLat + (15000.0 / 111320.0), centerLon);
+
+    List<TelecomSite> allSites = List.of(s15km, s200m, s50m, s2km);
+
+    // Filter < 100m
+    List<TelecomSite> within100m = new ArrayList<>();
+    for (TelecomSite s : allSites) {
+      double d = TelecomDatabaseHelper.calculateDistanceMeters(centerLat, centerLon, s.getLatitude(), s.getLongitude());
+      if (d <= 100.0) {
+        s.setDistanceMeters(d);
+        within100m.add(s);
+      }
+    }
+    assertEquals(1, within100m.size());
+    assertEquals("SITE-50M", within100m.get(0).getSiteId());
+
+    // Filter < 1km
+    List<TelecomSite> within1km = new ArrayList<>();
+    for (TelecomSite s : allSites) {
+      double d = TelecomDatabaseHelper.calculateDistanceMeters(centerLat, centerLon, s.getLatitude(), s.getLongitude());
+      if (d <= 1000.0) {
+        s.setDistanceMeters(d);
+        within1km.add(s);
+      }
+    }
+    assertEquals(2, within1km.size());
+
+    // Filter < 10km
+    List<TelecomSite> within10km = new ArrayList<>();
+    for (TelecomSite s : allSites) {
+      double d = TelecomDatabaseHelper.calculateDistanceMeters(centerLat, centerLon, s.getLatitude(), s.getLongitude());
+      if (d <= 10000.0) {
+        s.setDistanceMeters(d);
+        within10km.add(s);
+      }
+    }
+    assertEquals(3, within10km.size());
+    assertFalse(within10km.contains(s15km));
+  }
 }
